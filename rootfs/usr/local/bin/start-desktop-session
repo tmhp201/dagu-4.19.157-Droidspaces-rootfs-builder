@@ -24,8 +24,6 @@ fi
 mkdir -p "$XDG_RUNTIME_DIR"
 chmod 700 "$XDG_RUNTIME_DIR"
 
-if [ -f /usr/share/xsessions/ubuntu-xorg.desktop ]; then
-    exec dbus-run-session -- gnome-session --session=ubuntu-xorg
-fi
-
-exec dbus-run-session -- gnome-session
+# gnome-session needs a logind session and the user systemd instance, neither of
+# which exists here; the shell itself runs fine on its own.
+exec dbus-run-session -- gnome-shell --x11 --mode=ubuntu
