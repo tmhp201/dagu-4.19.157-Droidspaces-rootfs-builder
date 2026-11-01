@@ -1,0 +1,7 @@
+{
+  "storage-driver": "overlay2",
+  "registry-mirrors": [
+    "https://docker.m.daocloud.io",
+    "https://docker.1ms.run"
+  ]
+}

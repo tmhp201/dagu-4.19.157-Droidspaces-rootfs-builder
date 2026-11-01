@@ -1,0 +1,5 @@
+*.tar
+*.tar.xz
+custom-*-rootfs.tar
+assets/
+.DS_Store

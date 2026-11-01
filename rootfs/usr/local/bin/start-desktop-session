@@ -1,0 +1,13 @@
+#!/bin/sh
+# Start the KDE session on the Termux:X11 display.
+set -eu
+
+DISPLAY="${DISPLAY:-:5}"
+export DISPLAY
+
+if [ -S /tmp/.pulse-socket ] && [ -z "${PULSE_SERVER:-}" ]; then
+    PULSE_SERVER="unix:/tmp/.pulse-socket"
+    export PULSE_SERVER
+fi
+
+exec startplasma-x11

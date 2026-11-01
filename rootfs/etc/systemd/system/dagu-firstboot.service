@@ -1,0 +1,14 @@
+[Unit]
+Description=First boot fixes for the Dagu rootfs
+After=local-fs.target
+ConditionPathExists=!/var/lib/dagu-firstboot.done
+Before=desktop-session.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/dagu-firstboot
+ExecStartPost=/usr/bin/touch /var/lib/dagu-firstboot.done
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target

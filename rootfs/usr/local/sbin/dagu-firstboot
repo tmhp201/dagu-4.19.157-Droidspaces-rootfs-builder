@@ -1,0 +1,12 @@
+#!/bin/sh
+# First-boot fixes that cannot be baked into the image: the machine id is
+# generated on the first boot and the units are enabled again in case the
+# container image was unpacked by a tool that dropped the symlinks.
+set -eu
+
+[ -s /etc/machine-id ] || systemd-machine-id-setup
+
+systemctl enable systemd-networkd systemd-resolved dbus docker containerd \
+        desktop-session ds-nat6 2>/dev/null || true
+
+exit 0

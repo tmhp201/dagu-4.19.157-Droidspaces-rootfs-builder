@@ -1,0 +1,12 @@
+[Match]
+Name=eth*
+
+[Network]
+DHCP=yes
+IPv6AcceptRA=no
+KeepConfiguration=yes
+
+[DHCPv4]
+UseDNS=yes
+UseDomains=yes
+RouteMetric=100

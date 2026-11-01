@@ -1,0 +1,14 @@
+[Unit]
+Description=Static IPv6 address for the Droidspaces NAT66 prefix
+After=systemd-networkd.service
+Wants=systemd-networkd.service
+StartLimitIntervalSec=60
+StartLimitBurst=5
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/ds-nat6-up.sh
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,69 @@
+FROM debian:trixie AS customizer
+
+ARG DEBIAN_FRONTEND=noninteractive
+ARG USERNAME=dagu
+ARG USER_UID=1000
+
+ENV LANG=en_US.UTF-8 \
+    LANGUAGE=en_US:en \
+    LC_ALL=en_US.UTF-8
+
+# APT 并行下载与重试，CI 网络抖动时构建不会整轮失败
+RUN printf '%s\n' \
+    'Acquire::Queue-Mode "host";' \
+    'Acquire::http::Pipeline-Depth "10";' \
+    'Acquire::https::Pipeline-Depth "10";' \
+    'Acquire::Retries "3";' \
+    > /etc/apt/apt.conf.d/99parallel-downloads
+
+RUN sed -i 's/Components: main/Components: main contrib non-free non-free-firmware/' \
+        /etc/apt/sources.list.d/debian.sources 2>/dev/null || true
+RUN apt-get update && apt-get upgrade -y && apt-get install -y --no-install-recommends \
+        systemd systemd-sysv systemd-resolved systemd-timesyncd \
+        dbus dbus-user-session \
+        plasma-desktop plasma-workspace plasma-pa \
+        kde-config-gtk-style kde-spectacle konsole dolphin kate ark \
+        firefox-esr
+RUN apt-get install -y --no-install-recommends \
+        docker.io containerd \
+        iproute2 iputils-ping curl wget ca-certificates \
+        sudo bash less nano procps psmisc xz-utils tar kmod udev \
+        locales tzdata \
+        fonts-noto-cjk fonts-dejavu-core \
+        x11-xserver-utils xdg-utils \
+        pulseaudio-utils \
+        openssh-server
+RUN apt-get clean && rm -rf /var/lib/apt/lists/*
+
+# 桌面与容器运行所需的基本运行状态
+RUN sed -i 's/^# *en_US.UTF-8/en_US.UTF-8/; s/^# *zh_CN.UTF-8/zh_CN.UTF-8/' /etc/locale.gen \
+    && locale-gen \
+    && ln -sf /usr/share/zoneinfo/Asia/Shanghai /etc/localtime \
+    && echo "Asia/Shanghai" > /etc/timezone
+
+RUN useradd -m -u "$USER_UID" -s /bin/bash "$USERNAME" \
+    && echo "$USERNAME ALL=(ALL) NOPASSWD:ALL" > "/etc/sudoers.d/90-$USERNAME" \
+    && chmod 0440 "/etc/sudoers.d/90-$USERNAME" \
+    && usermod -aG video,input,render "$USERNAME" 2>/dev/null || true
+
+# 这些单元由 rootfs 预置的配置驱动：网络、桌面会话、容器内的 docker
+RUN systemctl enable systemd-networkd systemd-resolved dbus docker containerd \
+        desktop-session ds-nat6 ssh \
+    && systemctl disable getty@tty1 2>/dev/null || true
+
+# udev 在容器里没有内核事件源，保留单元但不等待它
+RUN systemctl mask systemd-udev-settle.service 2>/dev/null || true
+
+COPY rootfs/ /
+RUN chmod 0755 /usr/local/bin/start-desktop-session \
+               /usr/local/bin/ds-nat6-up.sh \
+               /usr/local/sbin/dagu-firstboot \
+    && systemctl enable dagu-firstboot.service \
+    && : > /etc/machine-id
+
+FROM scratch AS export
+LABEL droidspaces.name="Dagu KDE (Debian 13)" \
+      droidspaces.distro="Debian" \
+      droidspaces.description="Debian 13 with KDE Plasma on X11, systemd, Docker and dual-stack networking for Droidspaces on the Xiaomi Pad 5 Pro 12.4." \
+      droidspaces.author="dagu-4.19.157-Droidspaces-rootfs-builder"
+COPY --from=customizer / /
