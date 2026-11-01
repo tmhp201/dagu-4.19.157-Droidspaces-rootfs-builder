@@ -46,19 +46,18 @@ RUN useradd -m -u "$USER_UID" -s /bin/bash "$USERNAME" \
     && chmod 0440 "/etc/sudoers.d/90-$USERNAME" \
     && usermod -aG video,input,render "$USERNAME" 2>/dev/null || true
 
-# 这些单元由 rootfs 预置的配置驱动：网络、桌面会话、容器内的 docker
-RUN systemctl enable systemd-networkd systemd-resolved dbus docker containerd \
-        desktop-session ds-nat6 ssh \
-    && systemctl disable getty@tty1 2>/dev/null || true
-
-# udev 在容器里没有内核事件源，保留单元但不等待它
-RUN systemctl mask systemd-udev-settle.service 2>/dev/null || true
-
+# 覆盖文件先落盘：desktop-session.service 与 ds-nat6.service 由 rootfs/ 提供，
+# 必须在启用单元之前存在。
 COPY rootfs/ /
 RUN chmod 0755 /usr/local/bin/start-desktop-session \
                /usr/local/bin/ds-nat6-up.sh \
-               /usr/local/sbin/dagu-firstboot \
-    && systemctl enable dagu-firstboot.service \
+               /usr/local/sbin/dagu-firstboot
+
+# 这些单元由 rootfs 预置的配置驱动：网络、桌面会话、容器内的 docker
+RUN systemctl enable systemd-networkd systemd-resolved dbus docker containerd \
+        desktop-session ds-nat6 dagu-firstboot ssh \
+    && systemctl disable getty@tty1 \
+    && systemctl mask systemd-udev-settle.service \
     && : > /etc/machine-id
 
 FROM scratch AS export
