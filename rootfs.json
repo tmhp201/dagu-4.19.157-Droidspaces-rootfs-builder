@@ -6,10 +6,10 @@
     "author": "dagu-4.19.157-Droidspaces-rootfs-builder",
     "architecture": "aarch64",
     "file": "Dagu-KDE",
-    "download_url": "https://github.com/univers629/dagu-4.19.157-Droidspaces-rootfs-builder/releases/download/v20261101-143349/Dagu-GNOME-Droidspaces-rootfs-aarch64-20261101-v20261101-143349.tar.xz",
-    "sha256": "7841bbda6ebe74655c0c9189eb2d27a5fa1a6b404d1d6fa3c282acd664458b19",
-    "size_bytes": 443094276,
-    "version": "v20261101-143349",
+    "download_url": "https://github.com/univers629/dagu-4.19.157-Droidspaces-rootfs-builder/releases/download/v20261101-151141/Dagu-Anland-Droidspaces-rootfs-aarch64-20261101-v20261101-151141.tar.xz",
+    "sha256": "f298764f2e023e3e919e68467efcfa22721efe909f58cfc727fa356507783f34",
+    "size_bytes": 720746252,
+    "version": "v20261101-151141",
     "build_date": "20261101"
   }
 ]
