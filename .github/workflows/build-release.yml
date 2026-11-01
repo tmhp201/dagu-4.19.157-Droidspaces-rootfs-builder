@@ -37,7 +37,7 @@ jobs:
           fi
 
       - name: Build rootfs
-        run: ./build.sh -a aarch64 -i Dagu-GNOME -v "${{ steps.meta.outputs.build_id }}"
+        run: ./build.sh -a aarch64 -i Dagu-Anland -v "${{ steps.meta.outputs.build_id }}"
 
       - uses: actions/upload-artifact@v4
         with:

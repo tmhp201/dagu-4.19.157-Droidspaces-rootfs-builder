@@ -50,6 +50,22 @@ docker buildx build \
   --platform "$PLATFORM" \
   --target export \
   --output "type=tar,dest=$TEMP_TAR" \
+  --build-arg DESKTOP="${DESKTOP:-KDE}" \
+  --build-arg DESKTOP_AUTOSTART="${DESKTOP_AUTOSTART:-true}" \
+  --build-arg DISPLAY_BACKEND="${DISPLAY_BACKEND:-anland-wayland}" \
+  --build-arg PulseAudio="${PULSEAUDIO:-true}" \
+  --build-arg ENABLE_zh_tz_ARG="${ENABLE_ZH_TZ:-true}" \
+  --build-arg ENABLE_binfmt_ARG=false \
+  --build-arg ENABLE_yj_ARG=false \
+  --build-arg ENABLE_mesa_ARG=false \
+  --build-arg ENABLE_kfgj_ARG=false \
+  --build-arg ENABLE_zip_ARG=true \
+  --build-arg ENABLE_docker_ARG=true \
+  --build-arg ENABLE_srf_ARG=false \
+  --build-arg ENABLE_8gen2_wayland_ARG=false \
+  --build-arg ENABLE_nosnap_ARG=true \
+  --build-arg ENABLE_systemd257_ARG=true \
+  --build-arg USERNAME="${USERNAME:-dagu}" \
   -f "$DOCKERFILE" \
   .
 
