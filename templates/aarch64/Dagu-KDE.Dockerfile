@@ -21,9 +21,11 @@ RUN sed -i 's/Components: main/Components: main contrib non-free non-free-firmwa
 RUN apt-get update && apt-get upgrade -y && apt-get install -y --no-install-recommends \
         systemd systemd-sysv systemd-resolved systemd-timesyncd \
         dbus dbus-user-session \
+        firefox-esr
+RUN apt-get install -y --install-recommends \
         kde-plasma-desktop plasma-workspace plasma-pa kwin-x11 \
         kde-config-gtk-style kde-config-screenlocker kde-spectacle \
-        konsole dolphin kate ark firefox-esr \
+        konsole dolphin kate ark \
         qml6-module-qtquick-particles qml6-module-qtwebchannel \
         qml6-module-qtwebengine qml6-module-org-kde-kirigamiaddons-datetime \
         qml6-module-org-kde-kirigamiaddons-formcard
