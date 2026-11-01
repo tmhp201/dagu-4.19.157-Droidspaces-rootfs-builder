@@ -62,6 +62,8 @@ RUN groupadd -g 3003 aid_inet \
     && groupadd -g 3004 aid_net_raw \
     && groupadd -g 786 droidspaces-gpu 2>/dev/null || true
 
+# Ubuntu 的 base 镜像自带 UID 1000 的 ubuntu 用户，先让位给 dagu
+RUN userdel -r ubuntu 2>/dev/null || true
 RUN useradd -m -u "$USER_UID" -s /bin/bash "$USERNAME" \
     && echo "$USERNAME ALL=(ALL) NOPASSWD:ALL" > "/etc/sudoers.d/90-$USERNAME" \
     && chmod 0440 "/etc/sudoers.d/90-$USERNAME" \
