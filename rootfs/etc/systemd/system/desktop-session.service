@@ -1,5 +1,5 @@
 [Unit]
-Description=KDE Plasma session on the Termux:X11 display
+Description=GNOME session on the Termux:X11 display
 After=dbus.service systemd-networkd.service
 Wants=dbus.service
 StartLimitIntervalSec=60
@@ -10,8 +10,9 @@ Type=simple
 User=1000
 Environment=XDG_SESSION_TYPE=x11
 Environment=XDG_SESSION_CLASS=user
-Environment=XDG_SESSION_DESKTOP=KDE
-Environment=XDG_CURRENT_DESKTOP=KDE
+Environment=XDG_SESSION_DESKTOP=ubuntu
+Environment=XDG_CURRENT_DESKTOP=GNOME
+Environment=GDK_BACKEND=x11
 Environment=XDG_RUNTIME_DIR=/run/user/1000
 EnvironmentFile=-/etc/environment
 EnvironmentFile=-/run/droidspaces.env

@@ -1,6 +1,6 @@
 # Dagu Droidspaces RootFS
 
-为小米平板 5 Pro 12.4（`dagu`，内核 `4.19.157`）准备的 Droidspaces 根文件系统。装好 KPM、Termux、Termux:X11，并在 Termux 里装好 X11 与音频包之后，导入本仓库发布的 rootfs，容器内的 KDE 桌面、声音、双栈网络、systemd 与 Docker 直接可用。
+为小米平板 5 Pro 12.4（`dagu`，内核 `4.19.157`）准备的 Droidspaces 根文件系统。装好 KPM、Termux、Termux:X11，并在 Termux 里装好 X11 与音频包之后，导入本仓库发布的 rootfs，容器内的 GNOME 桌面、声音、双栈网络、systemd 与 Docker 直接可用。
 
 ## 为什么需要这个 rootfs
 
@@ -11,14 +11,14 @@
 | systemd-networkd 257 用 nexthop 对象下发 IPv6 RA 路由，4.19 不支持，networkd 反复重配并丢掉地址 | 关闭 `IPv6AcceptRA`、开启 `KeepConfiguration`，由 `ds-nat6.service` 自行派生 IPv6 地址 |
 | NAT 模式下容器拿不到可路由的 IPv6 | 由 DHCPv4 地址派生 `fd64:7370::/48` 内的地址，网关 `fe80::1`；宿主没有全局 IPv6 时不保留默认路由 |
 | Termux:X11 的 X socket 与 Termux PulseAudio 的 socket 位于容器外 | `desktop-session.service` 读取 `/run/droidspaces.env` 里的 `PULSE_SERVER`；X socket 由 Droidspaces 的 X11 开关绑定到 `/tmp/.X11-unix` |
-| 容器内没有自动启动图形会话的入口 | `desktop-session.service` 在 `:5` 上启动 `startplasma-x11` |
+| 容器内没有自动启动图形会话的入口 | `desktop-session.service` 在 `:5` 上启动 `gnome-session` |
 
 ## 镜像内容
 
 | 组件 | 内容 |
 | --- | --- |
-| 发行版 | Debian 13（trixie），arm64 |
-| 桌面 | KDE Plasma X11：`plasma-desktop`、`plasma-workspace`、`plasma-pa`、Konsole、Dolphin、Kate、Spectacle、Ark |
+| 发行版 | Ubuntu 24.04（trixie），arm64 |
+| 桌面 | GNOME X11：`ubuntu-session`、`gnome-shell`、`gnome-terminal`、Nautilus、GNOME 控制中心、Epiphany |
 | 网络 | `systemd-networkd` + `systemd-resolved`，`10-droidspaces.network` 走 DHCPv4 并保留地址 |
 | IPv6 | `ds-nat6.service`：从 IPv4 派生地址、装默认路由、探测上游 |
 | 容器 | `docker.service`、`containerd.service`，`/etc/docker/daemon.json` 配置镜像加速 |
@@ -46,7 +46,7 @@ pkg install termux-x11-nightly pulseaudio
 
 ### 准备归档
 
-从本仓库 Release 下载 `Dagu-KDE-Droidspaces-rootfs-aarch64-*.tar.xz`，放进设备存储（例如 `/sdcard/Download`）。不要解压。
+从本仓库 Release 下载 `Dagu-GNOME-Droidspaces-rootfs-aarch64-*.tar.xz`，放进设备存储（例如 `/sdcard/Download`）。不要解压。
 
 ### 打开安装向导
 
@@ -83,7 +83,7 @@ Droidspaces → 底部 **容器** 标签 → 右下角 **+** → **从文件安�
 | --- | --- | --- | --- |
 | 4 | Android 存储 | 关 | 需要访问 `/sdcard` 时再开 |
 | 5 | 硬件访问 | 关 | 会把 GPU 节点镜像进隔离的 `/dev`，与下面一项互斥 |
-| 6 | GPU 访问 | 开 | 硬件渲染，KDE 桌面需要 |
+| 6 | GPU 访问 | 开 | 硬件渲染，GNOME 桌面需要 |
 | 7 | 配置 Termux:X11 | 开 | 把 Termux:X11 的 socket 绑定到容器 `/tmp/.X11-unix`，`DISPLAY=:5` |
 | 8 | Anland 显示 | 关 | 与 Termux:X11 互斥，本镜像走 X11 |
 | 9 | 配置 VirGL 3D 加速功能 | 关 | 与 GPU 访问互斥 |
@@ -136,7 +136,7 @@ Droidspaces → 底部 **容器** 标签 → 右下角 **+** → **从文件安�
 
 | 行 | 期望值 |
 | --- | --- |
-| 归档 | 下载的 `Dagu-KDE-…tar.xz` 文件名 |
+| 归档 | 下载的 `Dagu-GNOME-…tar.xz` 文件名 |
 | 容器 | 上一步填写的名称 |
 | 主机名 | 同上 |
 | 网络模式 | `NAT` |
@@ -155,13 +155,13 @@ Droidspaces → 底部 **容器** 标签 → 右下角 **+** → **从文件安�
 
 1. 在 Termux 里执行一次 `termux-x11 :5`，或直接打开 Termux:X11 应用。
 2. 在 **容器** 标签点 **启动**，会弹出日志窗口；等卡片显示「正在运行」与 PID 后关闭即可。
-3. 打开 Termux:X11 应用，看到 KDE 桌面。
+3. 打开 Termux:X11 应用，看到 GNOME 桌面。
 
 启动过程中容器内依次发生：
 
 - `systemd-networkd` 在 `eth0` 上取 DHCP 地址；
 - `ds-nat6.service` 从 IPv4 地址派生 `fd64:7370::…/64`，装默认路由并探测上游，不可达则移除该路由；
-- `desktop-session.service` 等待 `/tmp/.X11-unix/X5`，然后以 `dagu` 用户执行 `startplasma-x11`；
+- `desktop-session.service` 等待 `/tmp/.X11-unix/X5`，然后以 `dagu` 用户执行 `gnome-session`；
 - `docker.service`、`containerd.service` 启动，容器内可直接 `docker run`。
 
 ## 验证
@@ -197,17 +197,17 @@ su -c "droidspaces --name=dagu \
 **本地**：
 
 ```sh
-./build.sh -a aarch64 -i Dagu-KDE -v v20261101-120000
+./build.sh -a aarch64 -i Dagu-GNOME -v v20261101-120000
 ```
 
-依赖 Docker（含 buildx）、`jq`、`xz`。产物为 `Dagu-KDE-Droidspaces-rootfs-aarch64-<日期>-<版本>.tar.xz`。
+依赖 Docker（含 buildx）、`jq`、`xz`。产物为 `Dagu-GNOME-Droidspaces-rootfs-aarch64-<日期>-<版本>.tar.xz`。
 
 ## 目录结构
 
 ```
 archs.json                              架构到 Docker 平台与 CI runner 的映射
 build.sh                                构建单个模板
-templates/aarch64/Dagu-KDE.Dockerfile   镜像定义
+templates/aarch64/Dagu-GNOME.Dockerfile   镜像定义
 rootfs/                                 覆盖进镜像的文件
   etc/systemd/network/10-droidspaces.network
   etc/systemd/system/{desktop-session,ds-nat6,dagu-firstboot}.service
@@ -229,7 +229,7 @@ rootfs.json                             供 Droidspaces 添加仓库时读取
 - Firefox ESR 在容器内可能无法启动内容进程（页面空白）；其它浏览器或桌面程序不受影响。
 - 「配置 Termux:X11」开关（`enable_x11`）会让 Droidspaces 自己拉起 X 服务器，在本机内核上会导致整机重启；请把它关闭，改用绑定挂载 `$PREFIX/tmp/.X11-unix:/tmp/.X11-unix`。
 - 绑定挂载的 X socket 会在容器停止时被删除。顺序必须是「先启动容器，再启动 Termux 里的 `termux-x11 :5`，最后进桌面会话」；容器一旦重启，需要重新启动 X 服务器。
-- 桌面会话不使用容器内的 user systemd（unit 在此环境里不会就绪），而是由 `start-desktop-session` 在私有 D-Bus 会话里直接拉起 `startplasma-x11`；KWin 合成在 `~/.config/kwinrc` 里关闭，否则桌面全黑。
+- 桌面会话不使用容器内的 user systemd（unit 在此环境里不会就绪），而是由 `start-desktop-session` 在私有 D-Bus 会话里直接拉起 `gnome-session --session=ubuntu-xorg`。
 
 ## 许可
 

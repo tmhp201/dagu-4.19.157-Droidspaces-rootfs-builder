@@ -1,16 +1,18 @@
 #!/bin/sh
-# Start the KDE session on the Termux:X11 display.
+# Start the GNOME session on the Termux:X11 display.
 #
-# Plasma 6 starts its components through the user systemd instance, which does
-# not work inside this container: the units never report ready and are killed
-# on their start timeout.  The session therefore runs on a private bus, the
-# same way the reference container does.
+# GNOME starts its components through the user systemd instance, which does not
+# work inside this container: the units never report ready and are killed on
+# their start timeout.  The session therefore runs on a private bus, the same
+# way the reference container does.
 set -eu
 
 export DISPLAY="${DISPLAY:-:5}"
-export QT_QPA_PLATFORM=xcb
+export GDK_BACKEND=x11
 export XDG_SESSION_TYPE=x11
-export XDG_CURRENT_DESKTOP=KDE
+export XDG_SESSION_CLASS=user
+export XDG_CURRENT_DESKTOP=GNOME
+export XDG_SESSION_DESKTOP=ubuntu
 export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
 unset WAYLAND_DISPLAY || true
 
@@ -22,4 +24,8 @@ fi
 mkdir -p "$XDG_RUNTIME_DIR"
 chmod 700 "$XDG_RUNTIME_DIR"
 
-exec dbus-run-session -- startplasma-x11
+if [ -f /usr/share/xsessions/ubuntu-xorg.desktop ]; then
+    exec dbus-run-session -- gnome-session --session=ubuntu-xorg
+fi
+
+exec dbus-run-session -- gnome-session

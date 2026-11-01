@@ -1,7 +1,7 @@
 #!/bin/bash
 # Build one rootfs template for one architecture.
 #
-#   ./build.sh -a aarch64 -i Dagu-KDE [-v v20261101-120000]
+#   ./build.sh -a aarch64 -i Dagu-GNOME [-v v20261101-120000]
 #
 # The template is a Dockerfile whose last stage is named "export". The exported
 # filesystem becomes the rootfs tarball.
