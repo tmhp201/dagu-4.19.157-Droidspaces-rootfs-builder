@@ -50,7 +50,7 @@ docker buildx build \
   --platform "$PLATFORM" \
   --target export \
   --output "type=tar,dest=$TEMP_TAR" \
-  --build-arg DESKTOP="${DESKTOP:-KDE}" \
+  --build-arg DESKTOP="${DESKTOP:-kde}" \
   --build-arg DESKTOP_AUTOSTART="${DESKTOP_AUTOSTART:-true}" \
   --build-arg DISPLAY_BACKEND="${DISPLAY_BACKEND:-anland-wayland}" \
   --build-arg PulseAudio="${PULSEAUDIO:-true}" \
