@@ -227,6 +227,9 @@ rootfs.json                             供 Droidspaces 添加仓库时读取
 - 声音依赖「配置 PulseAudio」开关：未开启时容器内只有本地空设备，不会出声。
 - 镜像内 `/etc/resolv.conf` 默认是 `1.1.1.1`；向导里填了 DNS 服务器时会被覆盖，不填时可按需修改。
 - Firefox ESR 在容器内可能无法启动内容进程（页面空白）；其它浏览器或桌面程序不受影响。
+- 「配置 Termux:X11」开关（`enable_x11`）会让 Droidspaces 自己拉起 X 服务器，在本机内核上会导致整机重启；请把它关闭，改用绑定挂载 `$PREFIX/tmp/.X11-unix:/tmp/.X11-unix`。
+- 绑定挂载的 X socket 会在容器停止时被删除。顺序必须是「先启动容器，再启动 Termux 里的 `termux-x11 :5`，最后进桌面会话」；容器一旦重启，需要重新启动 X 服务器。
+- 桌面会话不使用容器内的 user systemd（unit 在此环境里不会就绪），而是由 `start-desktop-session` 在私有 D-Bus 会话里直接拉起 `startplasma-x11`；KWin 合成在 `~/.config/kwinrc` 里关闭，否则桌面全黑。
 
 ## 许可
 

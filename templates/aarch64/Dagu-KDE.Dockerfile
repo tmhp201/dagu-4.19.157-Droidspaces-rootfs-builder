@@ -21,9 +21,12 @@ RUN sed -i 's/Components: main/Components: main contrib non-free non-free-firmwa
 RUN apt-get update && apt-get upgrade -y && apt-get install -y --no-install-recommends \
         systemd systemd-sysv systemd-resolved systemd-timesyncd \
         dbus dbus-user-session \
-        plasma-desktop plasma-workspace plasma-pa \
-        kde-config-gtk-style kde-spectacle konsole dolphin kate ark \
-        firefox-esr
+        kde-plasma-desktop plasma-workspace plasma-pa kwin-x11 \
+        kde-config-gtk-style kde-config-screenlocker kde-spectacle \
+        konsole dolphin kate ark firefox-esr \
+        qml6-module-qtquick-particles qml6-module-qtwebchannel \
+        qml6-module-qtwebengine qml6-module-org-kde-kirigamiaddons-datetime \
+        qml6-module-org-kde-kirigamiaddons-formcard
 RUN apt-get install -y --no-install-recommends \
         docker.io containerd \
         iproute2 iputils-ping curl wget ca-certificates \
@@ -49,6 +52,9 @@ RUN useradd -m -u "$USER_UID" -s /bin/bash "$USERNAME" \
 # 覆盖文件先落盘：desktop-session.service 与 ds-nat6.service 由 rootfs/ 提供，
 # 必须在启用单元之前存在。
 COPY rootfs/ /
+RUN install -d -o "$USER_UID" -g "$USER_UID" /home/"$USERNAME"/.config \
+    && cp /etc/skel/.config/kwinrc /home/"$USERNAME"/.config/kwinrc \
+    && chown -R "$USER_UID":"$USER_UID" /home/"$USERNAME"/.config
 RUN chmod 0755 /usr/local/bin/start-desktop-session \
                /usr/local/bin/ds-nat6-up.sh \
                /usr/local/sbin/dagu-firstboot

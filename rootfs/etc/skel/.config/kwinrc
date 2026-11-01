@@ -1,0 +1,4 @@
+[Compositing]
+Enabled=false
+Backend=XRender
+OpenGLIsUnsafe=false

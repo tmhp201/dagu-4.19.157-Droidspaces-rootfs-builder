@@ -8,7 +8,11 @@ StartLimitBurst=10
 [Service]
 Type=simple
 User=1000
-PAMName=login
+Environment=XDG_SESSION_TYPE=x11
+Environment=XDG_SESSION_CLASS=user
+Environment=XDG_SESSION_DESKTOP=KDE
+Environment=XDG_CURRENT_DESKTOP=KDE
+Environment=XDG_RUNTIME_DIR=/run/user/1000
 EnvironmentFile=-/etc/environment
 EnvironmentFile=-/run/droidspaces.env
 Environment=DISPLAY=:5
