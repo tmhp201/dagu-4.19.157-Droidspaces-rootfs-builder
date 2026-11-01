@@ -19,10 +19,9 @@ RUN printf '%s\n' \
 RUN apt-get update && apt-get upgrade -y && apt-get install -y --no-install-recommends \
         systemd systemd-sysv systemd-resolved systemd-timesyncd \
         dbus dbus-user-session dconf-cli \
-        ubuntu-session gnome-session-bin gnome-shell gnome-terminal \
-        nautilus gnome-control-center gnome-text-editor gnome-system-monitor \
-        gnome-shell-extension-appindicator gnome-shell-extension-desktop-icons-ng \
-        gnome-tweaks epiphany-browser \
+        ubuntu-desktop-minimal ubuntu-session gnome-tweaks \
+        gnome-shell-extension-ubuntu-dock gnome-shell-extension-desktop-icons-ng \
+        gnome-shell-extension-appindicator \
         network-manager \
         docker.io containerd \
         iptables \
