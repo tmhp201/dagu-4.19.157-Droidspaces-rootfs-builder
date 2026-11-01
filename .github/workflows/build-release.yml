@@ -81,4 +81,9 @@ jobs:
           git add rootfs.json
           git diff --cached --quiet && { echo "rootfs.json unchanged"; exit 0; }
           git commit -m "chore: update rootfs.json for ${{ needs.build.outputs.build_id }}"
-          git push origin HEAD:main
+          for attempt in 1 2 3; do
+            git pull --rebase --autostash origin main || true
+            if git push origin HEAD:main; then exit 0; fi
+            sleep 5
+          done
+          exit 1
