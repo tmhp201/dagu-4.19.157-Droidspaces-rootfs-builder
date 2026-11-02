@@ -1,0 +1,13 @@
+[Unit]
+Description=桥接 Termux:X11 的 socket 目录
+After=local-fs.target
+Before=desktop-session.service
+ConditionPathIsDirectory=/mnt/termux/.X11-unix
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/droidspaces-x11-bridge
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target

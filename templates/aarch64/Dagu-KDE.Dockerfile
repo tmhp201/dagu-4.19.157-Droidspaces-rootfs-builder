@@ -88,6 +88,18 @@ RUN if [ "$DISPLAY_BACKEND" = "x11" ]; then \
         apt-get install -y --no-install-recommends x11-xserver-utils x11-utils xauth xkb-data libxcb-cursor0; \
     fi
 
+# 浏览器：packages.microsoft.com 的 binary-arm64 索引为空，Edge 没有 Linux/arm64
+# 版本；Debian 源里可用的是 Chromium。GUI 启动需要 chromium-sandbox，缺它会报
+# "No usable sandbox!" 并直接退出。scrot 用于在容器内截取 X 画面。
+RUN if [ "$DISPLAY_BACKEND" = "x11" ]; then \
+        apt-get install -y --no-install-recommends chromium chromium-sandbox scrot && \
+        printf '%s\n' \
+            '# 免去 KDE 密码服务弹窗、崩溃恢复气泡；自动播放时带声音' \
+            'export CHROMIUM_FLAGS="$CHROMIUM_FLAGS --password-store=basic --hide-crash-restore-bubble --autoplay-policy=no-user-gesture-required"' \
+            > /etc/chromium.d/droidspaces && \
+        chmod 0644 /etc/chromium.d/droidspaces; \
+    fi
+
 # Debian 13 自带 systemd 257，即 4.19 上验证过的版本。systemd257.sh 只对
 # Ubuntu 26.04 与 Fedora/Arch 提供预构建包族，对已经运行 257 的发行版检测后直接
 # 跳过；只有发行版既不是这些目标、systemd 又不是 257 时才会失败。
@@ -247,6 +259,17 @@ else
     done
 fi
 
+# Droidspaces 的 NAT 走宿主的转发路径，链路 MTU 不是 1500。容器 eth0 继承 1500 时，
+# 超过路径 MTU 的报文会被静默丢弃，表现出来就是下载或视频加载偶发卡在 0 字节：
+# 同一个文件在 1500 下 5 次里 2 次超时，1400 下 5 次全部成功（3.4–7 MB/s）。
+cat > /etc/systemd/network/20-droidspaces-mtu.network << 'EOT'
+[Match]
+Name=eth*
+
+[Link]
+MTUBytes=1400
+EOT
+
 mkdir -p /etc/systemd/logind.conf.d
 cat > /etc/systemd/logind.conf.d/99-power-key.conf << 'EOF'
 [Login]
@@ -306,8 +329,9 @@ COPY rootfs/ /
 
 # KDE 用 desktop-session.service 起会话（由 configure-desktop 安装并 enable），
 # 这里只启用网络与首次启动相关的单元；Anland 专用单元一并清掉。
-RUN chmod +x /usr/local/bin/ds-nat6-up.sh /usr/local/sbin/dagu-firstboot && \
-    systemctl enable ds-nat6 dagu-firstboot
+RUN chmod +x /usr/local/bin/ds-nat6-up.sh /usr/local/sbin/dagu-firstboot \
+        /usr/local/bin/droidspaces-x11-bridge && \
+    systemctl enable ds-nat6 dagu-firstboot droidspaces-x11-bridge
 
 RUN systemctl disable getty@tty1 2>/dev/null || true
 

@@ -1,7 +1,7 @@
 [Unit]
 Description=启动 Droidspaces 桌面会话
-After=network.target dbus.service display-manager.service
-Wants=dbus.service
+After=network.target dbus.service display-manager.service droidspaces-x11-bridge.service
+Wants=dbus.service droidspaces-x11-bridge.service
 StartLimitIntervalSec=60
 StartLimitBurst=5
 
@@ -14,6 +14,9 @@ EnvironmentFile=-/etc/environment
 # :X11-unix 挂进 /tmp/.X11-unix（绕过 --x11）时都要起会话；两者都没有则跳过，
 # 否则单元会一直 Restart 循环。socket 就绪由 start-desktop-session 自己等。
 ExecCondition=/bin/sh -c 'grep -q "^DISPLAY_BACKEND=x11" /etc/droidspaces-desktop.conf 2>/dev/null || exit 0; grep -q "enable_x11=1" /run/droidspaces/container.config 2>/dev/null || ls /tmp/.X11-unix/X* >/dev/null 2>&1'
+# 桥接脚本可重复执行：开机时 Termux:X11 尚未启动则由这里补挂。Anland 模板没有
+# 这个脚本，前缀 - 让缺失或失败都不影响会话启动。
+ExecStartPre=-+/usr/local/bin/droidspaces-x11-bridge
 ExecStart=/usr/local/bin/start-desktop-session
 Restart=on-failure
 RestartSec=2s

@@ -49,10 +49,22 @@ systemd、udev、dbus-daemon、libdbus-1-3、kmod 全部保持 trixie 版本；`
 | 显示服务 | Droidspaces `--x11`：Android 端起 Termux:X11，socket `/tmp/.X11-unix/X5` 挂进容器，登录 shell 得到 `DISPLAY=:5` |
 | 会话 | `/etc/droidspaces-desktop.conf` 写 `DESKTOP=kde`、`DISPLAY_BACKEND=x11`；`desktop-session.service` 以 1000 号用户执行 `/usr/local/bin/start-desktop-session` → `startplasma-x11` |
 | 渲染 | `/etc/environment` 写 `MESA_LOADER_DRIVER_OVERRIDE=kgsl`、`TU_DEBUG=noconform`；Mesa 来自 `install-mesa`（`debian_trixie_arm64` 包，arm64 专用构建） |
-| 合成器 | `KDE_COMPOSITING=true` 时 kwin 的 OpenGL 合成器走 Mesa/kgsl；默认关闭（`kwinrc` `[Compositing] Enabled=false`）：真机上打开后 kwin 能拿到渲染上下文，但画面不出现在 Termux:X11 上（黑屏），只让应用自己用 GPU 绘制 |
+| 合成器 | `KDE_COMPOSITING=true` 时 kwin 走 OpenGL 合成，在 kgsl 上采样窗口内容得到全黑；默认关闭（`kwinrc` `[Compositing] Enabled=false`），应用自身的 GL/EGL 仍走 GPU |
 | GPU 节点 | Droidspaces `--gpu` 镜像 `/dev/kgsl-3d0`、`/dev/dri/renderD*`；容器用户需在 `droidspaces-gpu` 组（gid 786，构建时已加） |
+| socket 桥接 | `droidspaces-x11-bridge.service` 把 `/mnt/termux/.X11-unix` 挂到 `/tmp/.X11-unix`，与 `desktop-session.service` 同批启动；`--x11` 关闭时由它补上这个路径 |
 
 4.19 厂商内核没有 `msm` DRM，只有 `/dev/kgsl-3d0`，因此不能走 Zink/VirGL 那套；Freedreno 的 `kgsl` 后端是唯一的硬件 GL 路径。Mesa-for-Android 的 `libEGL_mesa`/`libgallium` 链接 `libLLVM.so.19.1`，所以镜像必须装发行版的 `libllvm19`（trixie 自带 `1:19.1.7-3+b1`）；缺它时 `libEGL_mesa` 加载失败，`glxinfo` 报 `couldn't find RGB GLX visual or fbconfig`，kwin 与 plasmashell 都起不来。
+
+### kwin 合成器实测
+
+| 后端 | 结果 |
+| --- | --- |
+| OpenGL / GLX（freedreno kgsl） | 窗口内容全黑，只剩 kwin 自己绘制的标题栏与按钮 |
+| OpenGL + `LIBGL_ALWAYS_SOFTWARE=1`（llvmpipe） | 正常 |
+| QPainter | 正常 |
+| OpenGL ES / EGL（`KWIN_COMPOSE=O2ES`） | 上下文创建失败（`Invalid QOpenGLContext::globalShareContext()`），kwin 退出 |
+
+同一份 kwin、同一个 X 服务器，只换 GL 实现，结果在「全黑」与「正常」之间切换，因此失败点在把其他窗口的 pixmap 采成 GL 纹理这一步（`GLX_EXT_texture_from_pixmap` / DRI3 dmabuf 导入）。llvmpipe 与 QPainter 都改用 X 端拷贝，不经过这条路径。`MESA_DRI3_DISABLE_PRESENT_WAIT_FENCE=1` 不改变结果。termux-packages 上同类非原生 GL 栈的合成失败见 [#32067](https://github.com/termux/termux-packages/issues/32067)。
 
 ## 构建
 
@@ -88,30 +100,23 @@ systemd、udev、dbus-daemon、libdbus-1-3、kmod 全部保持 trixie 版本；`
 | --- | --- | --- |
 | 配置 · 网络 | 网络模式 / DNS | `NAT` / `223.5.5.5,8.8.8.8` |
 | 配置 · 集成与硬件 | GPU 访问 | 开 |
-| 配置 · 集成与硬件 | 配置 Termux:X11 | **开** |
+| 配置 · 集成与硬件 | 配置 Termux:X11 | **关** |
 | 配置 · 集成与硬件 | Anland | 关 |
 | 配置 · 集成与硬件 | PulseAudio | 开（socket） |
 | 配置 · 沙箱 | 允许沙箱 | 开 |
+| 配置 · 高级选项 | 绑定挂载点 | `/data/data/com.termux/files/usr/tmp:/mnt/termux` |
 
 命令行等价形式：
 
 ```sh
 droidspaces --name=kde --rootfs-img=dagu-kde.img --init=/sbin/init \
-  --net=nat --dns=223.5.5.5,8.8.8.8 --gpu --x11 --pulse-audio --allow-sandboxing start
+  --net=nat --dns=223.5.5.5,8.8.8.8 --gpu --pulse-audio --allow-sandboxing \
+  -B /data/data/com.termux/files/usr/tmp:/mnt/termux start
 ```
 
-`--x11` 会让 Droidspaces 以 termux 用户 `app_process` 起 Termux:X11，这一步在 dagu 上会直接重启设备（现象：命令无输出、`uptime` 归零）。实际按下面两条走：
+`--x11` 会让 Droidspaces 以 termux 用户 `app_process` 起 Termux:X11，这一步在 dagu 上会直接重启设备（命令无输出、`uptime` 归零），因此容器启动时不开它，X 服务器由 Android 侧的 Termux:X11 应用提供。镜像内的 `droidspaces-x11-bridge.service` 在启动时把 `/mnt/termux/.X11-unix` 挂到 `/tmp/.X11-unix`，`desktop-session.service` 排在它之后。手工补这一步仍然可用：
 
 ```sh
-# 宿主机：Android 侧先打开 Termux:X11 应用，再启动容器（不带 --x11 / --pulse-audio）
-su -c "droidspaces --name=deb13 \
-  --rootfs=/data/local/Droidspaces/Containers/deb13/rootfs \
-  --init=/sbin/init --net=nat --dns=223.5.5.5,8.8.8.8 --gpu \
-  -B /data/data/com.termux/files/usr/tmp:/mnt/termux start"
-```
-
-```sh
-# 容器内：把宿主挂进来的 socket 目录桥到 /tmp/.X11-unix
 mount --bind /mnt/termux/.X11-unix /tmp/.X11-unix
 systemctl restart desktop-session
 ```
@@ -130,16 +135,27 @@ su -c 'T=/data/data/com.termux/files/usr; CLASSPATH=$T/libexec/termux-x11/loader
 
 ## 音频与 Docker
 
-**音频**：容器以 `enable_pulseaudio=1` 启动时，Droidspaces 用 Termux 的 `pulseaudio`（以 `u0_a289` 运行，留在 `droidspacesd` permissive 域）在 Android 侧起服务，并把 socket 桥到 `/tmp/.pulse-socket`。实测可用：
+**音频**：容器以 `enable_pulseaudio=1` 启动时，Droidspaces 用 Termux 的 `pulseaudio`（以 `u0_a289` 运行，留在 `droidspacesd` permissive 域）在 Android 侧起服务，并把 socket 桥到 `/tmp/.pulse-socket`。
+
+能否出声取决于 Termux 那份 `pulseaudio` 的配置，不是镜像能决定的。原样安装的 `$PREFIX/etc/pulse/default.pa` 里有一条 `load-module module-sles-sink`，它在多数设备上缺 Android HAL 依赖：sink 会出现、`speaker-test` 也不报错，但 `dumpsys media.audio_flinger` 里 track 永远是 `0 are active`，也就是没有声音。上游的 `setup-termux.sh` 做的正是这份修补，手工装过 Termux 环境的话需要自己补：
 
 ```sh
-pactl list short sinks            # OpenSL_ES_sink / AAudio_sink
-speaker-test -c 2 -t sine -l 1    # 登录 shell 里跑，/etc/environment 已带 PULSE_SERVER
+P=/data/data/com.termux/files/usr/etc/pulse/default.pa
+sed -i 's|^load-module module-sles-sink|#&|' "$P"
+sed -i 's|^load-module module-console-kit|#&|' "$P"          # Android 没有 system bus，会 futex 死锁
+sed -i 's|^load-module module-suspend-on-idle|#&|' "$P"      # 切音频设备时会死锁
+# 把 module-aaudio-sink 放到 module-always-sink 之前，然后重启 pulseaudio
 ```
+
+改完只剩 `AAudio_sink` 时，播放期间 AudioFlinger 会显示 `1 Tracks of which 1 are active`，声音正常。另外 pulseaudio 重启后 `.pulse-socket` 是新 inode，容器里 bind 的 `/tmp/.pulse-socket` 还是旧 inode，`pactl` 会报 `Connection refused`；此时在容器内用 `/mnt/termux/.pulse-socket`（宿主 tmp 目录整目录 mount 进来的）即可绕过，或重启容器。
 
 `droidspaces run` 用的是 Android 的 PATH 与环境，里面没有 `PULSE_SERVER`，ALSA 的 pulse 插件会连默认路径并报 `-112 Host is down`；用 `su -l dagu -c ...` 或自己 export 即可。开 `enable_pulseaudio=1` 本身不会像 `--x11` 那样重启设备。
 
+**网络**：Droidspaces 的 NAT 走宿主转发，链路 MTU 不足 1500。容器 eth0 按 1500 走时，超路径 MTU 的报文被静默丢弃，表现是下载、视频加载偶发卡在 0 字节——同一个文件 1500 下 5 次里 2 次超时，1400 下 5 次全部成功（3.4–7 MB/s）。镜像里用 `/etc/systemd/network/20-droidspaces-mtu.network` 把 MTU 钉在 1400。
+
 **Docker**：trixie 的 `docker.io` 只提供 `dockerd`，CLI 拆到了 `docker-cli`，模板两个都装。dockerd 以 overlay2 起得来，`docker run --rm hello-world` 实测通过；`/etc/docker/daemon.json` 预设了 `docker.m.daocloud.io` 与 `docker.1ms.run` 两个镜像源。
+
+**浏览器**：镜像装 `chromium` 与 `chromium-sandbox`，并由 `/etc/chromium.d/droidspaces` 追加三个参数——`--password-store=basic` 免掉首次启动的 KDE 密码服务弹窗，`--hide-crash-restore-bubble` 免掉崩溃恢复气泡，`--autoplay-policy=no-user-gesture-required` 让命令行直接打开页面时带声音。不带最后一个参数时 Chromium 会静音自动播放：画面正常、`pactl list short sink-inputs` 为空。Edge 没有 Linux/arm64 版本，`packages.microsoft.com` 的 `binary-arm64` 索引为空。
 
 ## 验证
 
@@ -166,7 +182,9 @@ su -c "cat /run/droidspaces/containers/kde/container.config" | grep -E "enable_x
 | 风险 | 说明 | 回退 |
 | --- | --- | --- |
 | glibc 混装 | 2.43 的 `libc6` 配 257 的 systemd 属于 Debian 不支持的 partial upgrade | `KDE_STACK=trixie` 重新构建，退回 Plasma 6.3.6 |
-| kwin 合成器 | 打开后 kwin 能初始化 OpenGL，但画面不出现在 Termux:X11（实测整屏黑，只剩光标）；GLX/DRI3 + kgsl 的呈现路径还没打通 | 默认关闭（`KDE_COMPOSITING=false`）；应用仍走 GPU 的 GLX/EGL |
+| kwin 合成器 | 打开后窗口内容全黑，只剩 kwin 绘制的装饰（矩阵见上）；属于 kgsl 的 texture-from-pixmap 限制 | 默认关闭（`KDE_COMPOSITING=false`）；需要合成时用 `KWIN_COMPOSE=Q` 或 llvmpipe，应用仍走 GPU 的 GLX/EGL |
+| 视频解码 | 没有 `msm` DRM 就没有 VA-API，1080p 由 CPU 软解；内存吃满时掉帧 | 降低播放分辨率、关闭多余程序 |
+| 浏览器 | Microsoft Edge 没有 Linux/arm64 版本，`packages.microsoft.com` 的 `binary-arm64` 索引为空 | 镜像内置 Chromium 与 `chromium-sandbox` |
 | 容器网络 | Droidspaces `--net=nat` 依赖容器内 DHCP 客户端；`systemd-networkd` 被屏蔽时 eth0 拿不到地址、DNS 全失效 | 镜像已保留 networkd/resolved，只屏蔽 udevd 与 NetworkManager |
 | Plasma 6.8 | 上游去掉 X11 会话，本方案停在 6.7.x 不再上移 | 无：再往上必须转 Wayland |
 | Mesa 版本 | `install-mesa` 装的是预编译 arm64 包，版本跟随上游发布 | `install-mesa --uninstall` 回到发行版 Mesa（kgsl 不可用） |
