@@ -36,4 +36,16 @@ chmod -R a+rX "$tmp"
 # The session installs into the user's home and builds only the small helpers;
 # the distro Xwayland is good enough (ANLAND_XWAYLAND=0) because the GL fixes
 # it patches are for the Mesa kgsl path that anland does not use.
-su - "$USERNAME" -c "ANLAND_XWAYLAND=0 bash '$tmp/anlandx/setupanlandx.sh'"
+# The installer wants a user runtime dir and tries to enable a systemd user
+# unit; neither exists during a container build (no logind session), so provide
+# the directory and treat the unit step as best effort - the image ships a
+# system unit that runs the same session.
+install -d -m 0700 -o "$USERNAME" -g "$USERNAME" /run/user/1000
+
+if ! su - "$USERNAME" -c "XDG_RUNTIME_DIR=/run/user/1000 ANLAND_XWAYLAND=0 bash '$tmp/anlandx/setupanlandx.sh'"; then
+    if [ -x "/home/$USERNAME/.local/bin/anland-session" ]; then
+        echo "--> session installed, one-time unit setup skipped"
+    else
+        exit 1
+    fi
+fi
