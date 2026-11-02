@@ -17,7 +17,9 @@ apt-get install -y --no-install-recommends \
     build-essential pkg-config curl unzip ca-certificates \
     libx11-dev libxext-dev libxfixes-dev libxrandr-dev libxi-dev \
     libxtst-dev libxrender-dev libxcomposite-dev libxkbfile-dev \
-    libwayland-dev wayland-protocols
+    libwayland-dev wayland-protocols \
+    libcap-dev libpam-systemd xwayland meson ninja-build \
+    libegl-mesa0 libglx-mesa0 libgbm1 libgl1-mesa-dri mesa-vulkan-drivers mesa-utils
 
 # The installer drops privileges to the desktop user, which needs to read the
 # extracted tree, so build it somewhere world-traversable instead of a private
