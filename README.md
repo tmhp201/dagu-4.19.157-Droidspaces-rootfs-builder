@@ -1,6 +1,13 @@
 # Dagu Droidspaces RootFS
 
-为小米平板 5 Pro 12.4（`dagu`，内核 `4.19.157`）准备的 Droidspaces 根文件系统：Ubuntu 26.04 LTS、systemd 257、KDE Plasma 6，显示通过 Anland Wayland 直接交给 Android 端呈现。
+为小米平板 5 Pro 12.4（`dagu`，内核 `4.19.157`）准备的 Droidspaces 根文件系统，两条产线：
+
+| 模板 | 发行版 | 桌面 | 显示 |
+| --- | --- | --- | --- |
+| `Dagu-Anland` | Ubuntu 26.04 LTS | Plasma 6 + Anland 补丁版 KWin | Anland Wayland（`wayland-anland`） |
+| `Dagu-KDE` | Debian 13 | Plasma 6.7 | Termux:X11（`DISPLAY=:5`），Mesa/kgsl 渲染 |
+
+下面的章节以 `Dagu-Anland` 为主线；Debian 模板的差异见 [Debian 13 / Plasma 6.7](#debian-13--plasma-67)。
 
 ## 为什么需要这个 rootfs
 
@@ -102,6 +109,29 @@ systemctl status anland-session ds-nat6 docker --no-pager
 ls -l /run/user/1000/wayland-anland         # 指向 /run/anland/wayland-0
 ```
 
+## Debian 13 / Plasma 6.7
+
+`debian` 分支新增 `Dagu-KDE` 模板：Debian 13 (trixie) 底座 + Plasma 6.7.4 + X11 + Mesa/kgsl。与 `Dagu-Anland` 的主要差异：
+
+| 项目 | Dagu-Anland | Dagu-KDE |
+| --- | --- | --- |
+| 发行版 | Ubuntu 26.04 | Debian 13 |
+| systemd | 257（用 `systemd257.sh` 换装） | 257（发行版自带，`systemd257.sh` 检测后跳过） |
+| 桌面 | Anland 补丁版 KWin（Wayland） | Plasma 6.7.4 + `kwin-x11` |
+| 显示 | `anland-session` | Termux:X11，`desktop-session.service` → `startplasma-x11` |
+| 渲染 | Mesa/kgsl（Anland 后端） | Mesa/kgsl（`MESA_LOADER_DRIVER_OVERRIDE=kgsl`） |
+| 容器开关 | Anland 开、Termux:X11 关 | **Termux:X11 开**、Anland 关 |
+
+安装时向导取值与 [安装](#安装) 相同，只有两处不同：**配置 Termux:X11 选开**、**Anland 选关**。首次启动后：
+
+```sh
+systemctl status desktop-session.service   # active (running)
+dpkg -s plasma-workspace | grep Version    # 4:6.7.4-*
+glxinfo -B | grep renderer                 # kgsl / Adreno
+```
+
+Plasma 6.7 要求 glibc ≥ 2.43，而 trixie 是 2.41，模板因此从 unstable 取 KDE/Qt/KF6，并把 systemd、udev、dbus 等底座按精确版本钉死在 trixie；构建期还会断言 systemd 运行时与包族都是 257，否则不产出镜像。镜像内置 Docker 26.1、buildx 与 compose，CI 在 runner 上先补装 docker 与 CLI 再调用 `build.sh`。依赖解析与回退方式见 [docs/debian-plasma67.md](docs/debian-plasma67.md)。
+
 ## 重建容器
 
 长按容器卡片 → **卸载容器**，输入容器名确认，会删除 rootfs 与设置；之后按上面的向导重新安装。
@@ -123,16 +153,20 @@ su -c "droidspaces --name=kubuntu \
 
 ```sh
 ./build.sh -a aarch64 -i Dagu-Anland -v v20261102-120000
+./build.sh -a aarch64 -i Dagu-KDE -v v20261102-120000
 ```
 
-依赖 Docker（含 buildx）、`jq`、`xz`。产物为 `Dagu-Anland-Droidspaces-rootfs-aarch64-<日期>-<版本>.tar.xz`。
+依赖 Docker（含 buildx）、`jq`、`xz`。产物为 `<模板>-Droidspaces-rootfs-aarch64-<日期>-<版本>.tar.xz`。模板的默认参数放在同目录的 `.env`（如 `templates/aarch64/Dagu-KDE.env`），已导出的环境变量优先。
 
 ## 目录结构
 
 ```
 archs.json                                  架构到 Docker 平台与 CI runner 的映射
 build.sh                                    构建单个模板
-templates/aarch64/Dagu-Anland.Dockerfile    镜像定义
+templates/aarch64/Dagu-Anland.Dockerfile    Ubuntu + Anland 镜像定义
+templates/aarch64/Dagu-KDE.Dockerfile       Debian 13 + Plasma 6.7 镜像定义
+templates/aarch64/Dagu-KDE.env              该模板的默认构建参数
+docs/debian-plasma67.md                     Debian 分支的依赖解析与已知风险
 rootfs/                                     覆盖进镜像的文件
   etc/systemd/network/10-droidspaces.network
   etc/systemd/system/{anland-session,ds-nat6,dagu-firstboot}.service
@@ -154,6 +188,7 @@ rootfs.json                                 供 Droidspaces 添加仓库时读�
 - `macvlan` 网络模式在 Wi-Fi 上不可用（网卡只接收目的地址为自身的帧），请使用 NAT。
 - 声音依赖「配置 PulseAudio」开关；关闭时容器内只有本地空设备。
 - 镜像内 `/etc/resolv.conf` 默认为 `1.1.1.1`，向导里填写的 DNS 会覆盖它。
+- `Dagu-KDE` 的 glibc 2.43 来自 unstable，属于 Debian 不支持的混装；需要完全发行版原生的镜像时用 `KDE_STACK=trixie` 构建，得到 Plasma 6.3.6。
 
 ## 许可
 

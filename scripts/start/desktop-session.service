@@ -1,6 +1,7 @@
 [Unit]
 Description=启动 Droidspaces 桌面会话
-After=network.target display-manager.service
+After=network.target dbus.service display-manager.service
+Wants=dbus.service
 StartLimitIntervalSec=60
 StartLimitBurst=5
 
@@ -9,6 +10,9 @@ Type=simple
 User=1000
 PAMName=login
 EnvironmentFile=-/etc/environment
+# x11 后端依赖 Droidspaces 的 --x11（Termux:X11）；容器没开 enable_x11 时直接跳过，
+# 否则单元会一直 Restart 循环。socket 就绪由 start-desktop-session 自己等。
+ExecCondition=/bin/sh -c 'grep -q "^DISPLAY_BACKEND=x11" /etc/droidspaces-desktop.conf 2>/dev/null || exit 0; grep -q "enable_x11=1" /run/droidspaces/container.config'
 ExecStart=/usr/local/bin/start-desktop-session
 Restart=on-failure
 RestartSec=2s

@@ -125,9 +125,16 @@ fi
 
 if [[ "$desktop" == kde ]]; then
     install -d -m 0755 "$rootfs/home/$username/.config"
-    cat > "$rootfs/home/$username/.config/kwinrc" <<'EOF'
+    # X11 下 kwin 的 OpenGL 合成器要依赖 GLX/DRI3 可用；默认走直接绘制（与 Anland 分支
+    # 一致），KDE_COMPOSITING=true 时打开，交给 Mesa/kgsl 做全屏合成。
+    compositing="${KDE_COMPOSITING:-false}"
+    [[ "$compositing" == true || "$compositing" == false ]] || {
+        echo "KDE_COMPOSITING 只能是 true 或 false，当前为 '$compositing'" >&2
+        exit 1
+    }
+    cat > "$rootfs/home/$username/.config/kwinrc" <<EOF
 [Compositing]
-Enabled=false
+Enabled=${compositing}
 EOF
 fi
 

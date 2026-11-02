@@ -22,6 +22,12 @@ done
 DOCKERFILE="templates/$ARCH/$NAME.Dockerfile"
 [ -f "$DOCKERFILE" ] || { echo "Error: $DOCKERFILE not found" >&2; exit 1; }
 
+# 模板默认值（DISPLAY_BACKEND / KDE_STACK / ENABLE_MESA 等）；已导出的环境变量优先。
+if [ -f "templates/$ARCH/$NAME.env" ]; then
+  # shellcheck disable=SC1090
+  source "templates/$ARCH/$NAME.env"
+fi
+
 PLATFORM=$(jq -er --arg a "$ARCH" '.[$a].platform' archs.json) \
   || { echo "Error: arch '$ARCH' not in archs.json" >&2; exit 1; }
 
@@ -53,18 +59,22 @@ docker buildx build \
   --build-arg DESKTOP="${DESKTOP:-kde}" \
   --build-arg DESKTOP_AUTOSTART="${DESKTOP_AUTOSTART:-true}" \
   --build-arg DISPLAY_BACKEND="${DISPLAY_BACKEND:-anland-next}" \
+  --build-arg KDE_STACK="${KDE_STACK:-trixie}" \
+  --build-arg KDE_UNSTABLE_BASE="${KDE_UNSTABLE_BASE:-https://deb.debian.org/debian}" \
+  --build-arg KDE_UNSTABLE_SNAPSHOT="${KDE_UNSTABLE_SNAPSHOT:-}" \
+  --build-arg KDE_COMPOSITING="${KDE_COMPOSITING:-false}" \
   --build-arg PulseAudio="${PULSEAUDIO:-true}" \
   --build-arg ENABLE_zh_tz_ARG="${ENABLE_ZH_TZ:-true}" \
   --build-arg ENABLE_binfmt_ARG=false \
   --build-arg ENABLE_yj_ARG=false \
-  --build-arg ENABLE_mesa_ARG=false \
+  --build-arg ENABLE_mesa_ARG="${ENABLE_MESA:-false}" \
   --build-arg ENABLE_kfgj_ARG=false \
   --build-arg ENABLE_zip_ARG=true \
   --build-arg ENABLE_docker_ARG=true \
   --build-arg ENABLE_srf_ARG=false \
   --build-arg ENABLE_8gen2_wayland_ARG=false \
   --build-arg ENABLE_nosnap_ARG=true \
-  --build-arg ENABLE_systemd257_ARG=true \
+  --build-arg ENABLE_systemd257_ARG="${ENABLE_SYSTEMD257:-true}" \
   --build-arg ANLAND_VERSION="${ANLAND_VERSION:-6.2}" \
   --build-arg USERNAME="${USERNAME:-dagu}" \
   -f "$DOCKERFILE" \

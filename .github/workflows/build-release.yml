@@ -2,7 +2,7 @@ name: Build and release the Dagu rootfs
 
 on:
   push:
-    branches: [main]
+    branches: [main, debian]
     tags: ["v*"]
   workflow_dispatch:
     inputs:
@@ -18,13 +18,11 @@ permissions:
   contents: write
 
 jobs:
-  build:
-    runs-on: ubuntu-24.04-arm
+  meta:
+    runs-on: ubuntu-latest
     outputs:
       build_id: ${{ steps.meta.outputs.build_id }}
     steps:
-      - uses: actions/checkout@v4
-
       - name: Resolve build id
         id: meta
         run: |
@@ -36,35 +34,68 @@ jobs:
             echo "build_id=v$(date +'%Y%m%d-%H%M%S')" >> "$GITHUB_OUTPUT"
           fi
 
+  build:
+    needs: meta
+    runs-on: ubuntu-24.04-arm
+    strategy:
+      fail-fast: false
+      matrix:
+        template: [Dagu-Anland, Dagu-KDE]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install docker and CLI
+        run: |
+          missing=""
+          for tool in docker jq xz; do
+            command -v "$tool" >/dev/null 2>&1 || missing="$missing $tool"
+          done
+          if [ -n "$missing" ]; then
+            sudo apt-get update
+            sudo apt-get install -y docker.io jq xz-utils
+          fi
+          if ! docker buildx version >/dev/null 2>&1; then
+            sudo apt-get update
+            sudo apt-get install -y docker-buildx
+          fi
+          sudo systemctl start docker 2>/dev/null || true
+          docker version
+          docker buildx version
+
       - name: Build rootfs
-        run: ./build.sh -a aarch64 -i Dagu-Anland -v "${{ steps.meta.outputs.build_id }}"
+        run: ./build.sh -a aarch64 -i "${{ matrix.template }}" -v "${{ needs.meta.outputs.build_id }}"
 
       - uses: actions/upload-artifact@v4
         with:
-          name: rootfs
+          name: rootfs-${{ matrix.template }}
           path: "*.tar.xz"
           retention-days: 3
           if-no-files-found: error
 
   release:
-    needs: build
+    needs: [meta, build]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
       - uses: actions/download-artifact@v4
         with:
-          name: rootfs
+          pattern: rootfs-*
+          merge-multiple: true
           path: assets
 
       - name: Publish release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ needs.build.outputs.build_id }}
-          name: Dagu rootfs ${{ needs.build.outputs.build_id }}
+          tag_name: ${{ needs.meta.outputs.build_id }}
+          name: Dagu rootfs ${{ needs.meta.outputs.build_id }}
           files: assets/*.tar.xz
           body: |
-            Debian 13 KDE rootfs for Droidspaces on the Xiaomi Pad 5 Pro 12.4.
+            Droidspaces rootfs images for the Xiaomi Pad 5 Pro 12.4.
+
+            - `Dagu-Anland-*`: Ubuntu 26.04 + Anland 6.x Wayland.
+            - `Dagu-KDE-*`: Debian 13 + KDE Plasma on Termux:X11 with Mesa/kgsl.
+
             Import the tarball as a container rootfs; see README for the container options.
 
       - name: Regenerate rootfs.json
@@ -72,7 +103,7 @@ jobs:
           python3 scripts/generate_rootfs_json.py \
             --assets assets \
             --repo "${{ github.repository }}" \
-            --tag "${{ needs.build.outputs.build_id }}"
+            --tag "${{ needs.meta.outputs.build_id }}"
 
       - name: Commit rootfs.json
         run: |
@@ -80,10 +111,15 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add rootfs.json
           git diff --cached --quiet && { echo "rootfs.json unchanged"; exit 0; }
-          git commit -m "chore: update rootfs.json for ${{ needs.build.outputs.build_id }}"
+          if [ "${GITHUB_REF_TYPE}" = "branch" ]; then
+            target="${GITHUB_REF_NAME}"
+          else
+            target="main"
+          fi
+          git commit -m "chore: update rootfs.json for ${{ needs.meta.outputs.build_id }}"
           for attempt in 1 2 3; do
-            git pull --rebase --autostash origin main || true
-            if git push origin HEAD:main; then exit 0; fi
+            git pull --rebase --autostash origin "$target" || true
+            if git push origin "HEAD:${target}"; then exit 0; fi
             sleep 5
           done
           exit 1

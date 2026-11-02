@@ -23,6 +23,28 @@ METADATA = {
     "file": "Dagu-KDE",
 }
 
+# 每个模板的发布元数据；未列出的模板沿用 METADATA。
+VARIANTS = {
+    "Dagu-Anland": {
+        "name": "Dagu Anland (Ubuntu 26.04)",
+        "distro": "Ubuntu",
+        "description": (
+            "Ubuntu 26.04 with the Anland 6.x Wayland session, systemd 257, Docker "
+            "and dual-stack networking for Droidspaces on the Xiaomi Pad 5 Pro 12.4."
+        ),
+        "file": "Dagu-Anland",
+    },
+    "Dagu-KDE": {
+        "name": "Dagu KDE (Debian 13)",
+        "distro": "Debian",
+        "description": (
+            "Debian 13 with KDE Plasma on Termux:X11 (DISPLAY=:5) and Mesa/kgsl "
+            "hardware rendering for Droidspaces on the Xiaomi Pad 5 Pro 12.4."
+        ),
+        "file": "Dagu-KDE",
+    },
+}
+
 ASSET_RE = re.compile(
     r"^(?P<file>.+)-Droidspaces-rootfs-(?P<arch>[^-]+)-(?P<date>\d{8})-(?P<version>.+)\.tar\.xz$"
 )
@@ -51,6 +73,7 @@ def main():
             continue
         path = os.path.join(args.assets, name)
         entry = dict(METADATA)
+        entry.update(VARIANTS.get(m.group("file"), {}))
         entry.update(
             {
                 "download_url": f"https://github.com/{args.repo}/releases/download/{args.tag}/{name}",

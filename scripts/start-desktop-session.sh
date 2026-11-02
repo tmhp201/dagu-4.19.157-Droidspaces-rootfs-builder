@@ -7,7 +7,20 @@ source "$config"
 
 case "${DESKTOP:-}:${DISPLAY_BACKEND:-}" in
     none:x11) command_line='exit 0' ;;
-    kde:x11) command_line='export DISPLAY="${DISPLAY:-:5}"; exec startplasma-x11' ;;
+    # X11 的 X 服务器由 Termux:X11 提供：容器里只有 socket，没有 Xorg。
+    # 启动前等 socket 就绪（最多 30 秒），否则 Plasma 会在 DISPLAY 上直接失败。
+    kde:x11)
+        command_line='export DISPLAY="${DISPLAY:-:5}"
+x11_socket="/tmp/.X11-unix/X${DISPLAY#*:}"
+x11_socket="${x11_socket%%.*}"
+for _ in $(seq 1 300); do
+    [[ -S "$x11_socket" ]] && break
+    sleep 0.1
+done
+[[ -S "$x11_socket" ]] || { echo "等待 X11 socket 超时：$x11_socket" >&2; exit 1; }
+echo "--> [x11] $DISPLAY"
+exec startplasma-x11'
+        ;;
     kde:anland-wayland) command_line='exec startplasma-wayland' ;;
     kde-mobile:anland-wayland) command_line='exec startplasmamobile' ;;
     gnome:anland-wayland) command_line='exec gnome-session --session=gnome' ;;

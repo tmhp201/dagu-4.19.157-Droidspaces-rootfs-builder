@@ -41,14 +41,178 @@ configure_environment() {
     done
 }
 
+# Debian 13 的 Plasma 6.7 只能来自 unstable：trixie 自带 6.3.6，backports 没有 Plasma。
+# sid 的 Qt 6.11.2 依赖 glibc >= 2.43，而 trixie 只有 2.41，所以走 6.7 必然要升级 glibc；
+# 但 4.19 厂商内核只验证过 systemd 257，运行时栈（systemd/udev/dbus）必须钉死在 trixie。
+readonly KDE_DEBIAN_BASE_PINNED=(
+    systemd systemd-sysv libsystemd0 libsystemd-shared libudev1 udev
+    libpam-systemd systemd-resolved systemd-timesyncd
+    dbus dbus-daemon dbus-bin dbus-user-session libdbus-1-3
+    init-system-helpers kmod
+)
+
+readonly KDE_RUNTIME_BASELINE=/tmp/droidspaces-base-versions
+
+readonly KDE_DEBIAN_NATIVE_PACKAGES=(
+    dbus-x11 x11-xserver-utils fonts-noto-cjk fonts-noto-color-emoji
+    kde-plasma-desktop pipewire pipewire-alsa pipewire-pulse wireplumber
+    powerdevil kscreen plasma-pa ark kwin-x11 upower konsole
+    dolphin kate kinfocenter mesa-utils pulseaudio-utils vulkan-tools
+    desktop-base dbus-user-session aha clinfo dmidecode libdisplay-info-bin
+    wayland-utils xserver-xorg kfind plasma-systemmonitor filelight glmark2 vkmark
+    systemsettings kde-config-screenlocker kio-extras xdg-user-dirs
+    dolphin-plugins ffmpegthumbs kdegraphics-thumbnailers
+    kimageformat6-plugins webext-plasma-browser-integration libcanberra-pulse
+    gstreamer1.0-plugins-base gstreamer1.0-plugins-good sound-theme-freedesktop
+)
+
+readonly KDE_DEBIAN_UNSTABLE_PACKAGES=(
+    plasma-desktop plasma-desktop-data plasma-workspace kwin-x11
+    plasma-pa kscreen powerdevil systemsettings kinfocenter plasma-systemmonitor
+    kde-config-screenlocker kio-extras xdg-desktop-portal-kde
+    ark konsole dolphin kate kfind filelight dolphin-plugins
+    ffmpegthumbs kdegraphics-thumbnailers kimageformat6-plugins
+    breeze breeze-icon-theme desktop-base webext-plasma-browser-integration
+    fonts-noto-cjk fonts-noto-color-emoji qt6-translations-l10n
+    xserver-xorg x11-xserver-utils x11-utils xauth libxcb-cursor0 xkb-data
+    pipewire pipewire-alsa pipewire-pulse wireplumber libcanberra-pulse
+    gstreamer1.0-plugins-base gstreamer1.0-plugins-good sound-theme-freedesktop
+    pulseaudio-utils alsa-utils
+    mesa-utils vulkan-tools clinfo glmark2 vkmark
+    upower dmidecode libdisplay-info-bin wayland-utils aha
+    xdg-user-dirs dbus-user-session kde-cli-tools polkit-kde-agent-1
+    libpam-kwallet5
+)
+
+# apt 的 `Pin: release n=<suite>` 匹配的是 sources 里写的套件名，不是 Release 文件的
+# Suite 字段：镜像的 `sid` 写 `unstable` 会匹配不上，pin 会静默失效。两边必须同名。
+debian_unstable_source() {
+    local base="${KDE_UNSTABLE_BASE:-https://deb.debian.org/debian}"
+    local snapshot="${KDE_UNSTABLE_SNAPSHOT:-}"
+    local suite="${KDE_UNSTABLE_SUITE:-}"
+
+    if [ -n "$snapshot" ]; then
+        printf '%s %s\n' "https://snapshot.debian.org/archive/debian/${snapshot}" "${suite:-unstable}"
+    else
+        printf '%s %s\n' "$base" "${suite:-sid}"
+    fi
+}
+
+debian_unstable_add_repository() {
+    local uri suite package version
+
+    read -r uri suite < <(debian_unstable_source)
+
+    cat > /etc/apt/sources.list.d/20-droidspaces-unstable.sources <<EOF
+Types: deb
+URIs: ${uri}
+Suites: ${suite}
+Components: main
+Architectures: arm64
+Signed-By: /usr/share/keyrings/debian-archive-keyring.gpg
+EOF
+
+    # 只钉基础运行时，其余交给求解器。不加 `Package: *` 的低优先级兜底：
+    # apt 在 `(= 精确版本)` 依赖上先挑高优先级候选再报不可安装，整个 6.7 栈会解析
+    # 失败（breeze 依赖 breeze-wallpaper (= 4:6.7.4-1) 时即如此）。
+    {
+        printf '# 4.19 厂商内核只验证过 systemd 257：运行时栈钉在 trixie，被迫升级即失败。\n'
+        for package in "${KDE_DEBIAN_BASE_PINNED[@]}"; do
+            version="$(dpkg-query -W -f='${Version}' "$package" 2>/dev/null || true)"
+            [ -n "$version" ] || continue
+            printf 'Package: %s\nPin: version %s\nPin-Priority: 1001\n\n' "$package" "$version"
+        done
+    } > /etc/apt/preferences.d/10-droidspaces-unstable.pref
+
+    debian_unstable_record_runtime
+    apt-get update
+}
+
+debian_unstable_record_runtime() {
+    local package version
+
+    : > "$KDE_RUNTIME_BASELINE"
+    for package in "${KDE_DEBIAN_BASE_PINNED[@]}"; do
+        version="$(dpkg-query -W -f='${Version}' "$package" 2>/dev/null || true)"
+        [ -n "$version" ] || continue
+        printf '%s %s\n' "$package" "$version" >> "$KDE_RUNTIME_BASELINE"
+    done
+}
+
+debian_unstable_verify() {
+    local package current expected version
+
+    for package in plasma-desktop plasma-workspace kwin-x11; do
+        version="$(dpkg-query -W -f='${Version}' "$package" 2>/dev/null || true)"
+        case "$version" in
+            4:6.7.*) printf '[kde] %s %s\n' "$package" "$version" ;;
+            *)
+                echo "Plasma 6.7 栈安装失败：${package} 版本为 '${version:-未安装}'，期望 4:6.7.x" >&2
+                return 1
+                ;;
+        esac
+    done
+
+    for package in /usr/bin/startplasma-x11 /usr/share/xsessions/plasmax11.desktop; do
+        [ -e "$package" ] || { echo "Plasma 6.7 缺少 X11 会话入口：$package" >&2; return 1; }
+    done
+
+    # 运行时栈逐包比对安装前的版本：dbus 曾被 dbus-x11 的精确版本依赖悄悄带走，
+    # systemd 一旦被拉到 262，镜像在 4.19 上起不来。
+    while read -r package expected; do
+        current="$(dpkg-query -W -f='${Version}' "$package" 2>/dev/null || true)"
+        if [ "$current" != "$expected" ]; then
+            echo "运行时栈被改动：$package 从 '$expected' 变成 '${current:-未安装}'" >&2
+            return 1
+        fi
+    done < "$KDE_RUNTIME_BASELINE"
+
+    printf '[kde] glibc %s / Qt %s / systemd %s\n' \
+        "$(dpkg-query -W -f='${Version}' libc6)" \
+        "$(dpkg-query -W -f='${Version}' libqt6core6t64)" \
+        "$(dpkg-query -W -f='${Version}' systemd)"
+}
+
+install_debian_native() {
+    apt-get install -y --no-install-recommends "${KDE_DEBIAN_NATIVE_PACKAGES[@]}"
+}
+
+install_debian_unstable() {
+    local -a targets=()
+    local package suite
+
+    read -r _ suite < <(debian_unstable_source)
+
+    debian_unstable_add_repository
+
+    for package in "${KDE_DEBIAN_UNSTABLE_PACKAGES[@]}"; do
+        targets+=("${package}/${suite}")
+    done
+
+    apt-get install -y --no-install-recommends "${targets[@]}"
+    debian_unstable_verify
+
+    # 装完就摘掉 unstable 源：容器里只面对 trixie，`apt upgrade` 不会触发 Debian
+    # 不支持的 partial upgrade；Plasma 组件就此停在 6.7.4。
+    {
+        printf 'stack=unstable\n'
+        printf 'plasma=%s\n' "$(dpkg-query -W -f='${Version}' plasma-workspace)"
+        printf 'qt=%s\n' "$(dpkg-query -W -f='${Version}' libqt6core6t64)"
+        printf 'glibc=%s\n' "$(dpkg-query -W -f='${Version}' libc6)"
+        printf 'systemd=%s\n' "$(dpkg-query -W -f='${Version}' systemd)"
+    } > /etc/droidspaces-kde-stack
+    rm -f /etc/apt/sources.list.d/20-droidspaces-unstable.sources \
+        /etc/apt/preferences.d/10-droidspaces-unstable.pref
+}
+
 install_apt() {
     case "$ID:$VERSION_ID" in
         debian:13)
-            apt-get install -y --no-install-recommends \
-                dbus-x11 x11-xserver-utils fonts-noto-cjk fonts-noto-color-emoji kde-plasma-desktop pipewire pipewire-alsa pipewire-pulse wireplumber powerdevil kscreen plasma-pa ark kwin-x11 upower konsole \
-                dolphin kate kinfocenter mesa-utils pulseaudio-utils vulkan-tools desktop-base dbus-user-session aha clinfo dmidecode libdisplay-info-bin wayland-utils xserver-xorg \
-                kfind plasma-systemmonitor filelight glmark2 vkmark systemsettings kde-config-screenlocker kio-extras xdg-user-dirs dolphin-plugins ffmpegthumbs kdegraphics-thumbnailers \
-                kimageformat6-plugins webext-plasma-browser-integration libcanberra-pulse gstreamer1.0-plugins-base gstreamer1.0-plugins-good sound-theme-freedesktop
+            if [ "${KDE_STACK:-trixie}" = "unstable" ]; then
+                install_debian_unstable
+            else
+                install_debian_native
+            fi
             ;;
         ubuntu:24.04)
             apt-get install -y --no-install-recommends \
