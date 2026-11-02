@@ -52,7 +52,7 @@ docker buildx build \
   --output "type=tar,dest=$TEMP_TAR" \
   --build-arg DESKTOP="${DESKTOP:-kde}" \
   --build-arg DESKTOP_AUTOSTART="${DESKTOP_AUTOSTART:-true}" \
-  --build-arg DISPLAY_BACKEND="${DISPLAY_BACKEND:-anland-wayland}" \
+  --build-arg DISPLAY_BACKEND="${DISPLAY_BACKEND:-anland-next}" \
   --build-arg PulseAudio="${PULSEAUDIO:-true}" \
   --build-arg ENABLE_zh_tz_ARG="${ENABLE_ZH_TZ:-true}" \
   --build-arg ENABLE_binfmt_ARG=false \
@@ -65,6 +65,7 @@ docker buildx build \
   --build-arg ENABLE_8gen2_wayland_ARG=false \
   --build-arg ENABLE_nosnap_ARG=true \
   --build-arg ENABLE_systemd257_ARG=true \
+  --build-arg ANLAND_VERSION="${ANLAND_VERSION:-6.2}" \
   --build-arg USERNAME="${USERNAME:-dagu}" \
   -f "$DOCKERFILE" \
   .

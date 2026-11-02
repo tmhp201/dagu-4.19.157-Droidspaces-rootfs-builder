@@ -18,6 +18,7 @@ ARG ENABLE_nosnap_ARG
 ARG ENABLE_systemd257_ARG
 ARG USERNAME
 ARG ANLAND_RELEASE_REPOSITORY=Goldzxcbug/droidspaces-package
+ARG ANLAND_VERSION=6.2
 ARG ANLAND_PACKAGE_REVISION=unknown
 ######################################################
 
@@ -44,6 +45,7 @@ COPY scripts/install-usb-manager.sh /usr/local/sbin/install-droidspaces-usb-mana
 COPY scripts/tui/install-anland-kde.sh /usr/local/sbin/install-anland-kde
 COPY scripts/tui/install-anland-gnome.sh /usr/local/sbin/install-anland-gnome
 COPY scripts/tui/install-anland-next.sh /usr/local/sbin/install-anland-next
+COPY scripts/install-anlandx.sh /usr/local/sbin/install-anlandx
 COPY scripts/tui/install-anland-niri.sh /usr/local/sbin/install-anland-niri
 COPY scripts/tui/install-anland-hyprland.sh /usr/local/sbin/install-anland-hyprland
 COPY scripts/tui/install-anland-mango.sh /usr/local/sbin/install-anland-mango
@@ -65,7 +67,7 @@ RUN if [ "$DISPLAY_BACKEND" = "anland-wayland" ]; then \
     rm -f /tmp/Anland-Audio.conf
 
 # 赋予相关脚本可执行权限
-RUN chmod +x /usr/local/bin/download-firmware /usr/local/sbin/nosnap /etc/profile.d/ds-aliases.sh /usr/local/sbin/install-anland-* /usr/local/sbin/install-mesa /usr/local/sbin/install-hangover-wine /usr/local/sbin/install-winefonts /usr/local/sbin/install-desktop /usr/local/sbin/configure-desktop /usr/local/sbin/configure-chrome /usr/local/bin/droidspaces-tui /usr/local/bin/start-desktop-session /usr/local/lib/droidspaces/desktops/*.sh && \
+RUN chmod +x /usr/local/sbin/install-anlandx /usr/local/bin/download-firmware /usr/local/sbin/nosnap /etc/profile.d/ds-aliases.sh /usr/local/sbin/install-anland-* /usr/local/sbin/install-mesa /usr/local/sbin/install-hangover-wine /usr/local/sbin/install-winefonts /usr/local/sbin/install-desktop /usr/local/sbin/configure-desktop /usr/local/sbin/configure-chrome /usr/local/bin/droidspaces-tui /usr/local/bin/start-anland-session /usr/local/lib/droidspaces/desktops/*.sh && \
     ln -s droidspaces-tui /usr/local/bin/dstui && \
     ln -s droidspaces-tui /usr/local/bin/ds-tui
 
@@ -101,11 +103,10 @@ RUN apt-get update && \
     kmod tzdata tar && \
     /usr/local/sbin/install-desktop "$DESKTOP" && \
     ############################################## Anland Wayland 支持 ################################################
-    if [ "$DISPLAY_BACKEND" = "anland-wayland" ]; then \
-        echo "--> [开启] 正在安装 $DESKTOP 的 Anland 包 (${ANLAND_PACKAGE_REVISION})..." && \
-        ANLAND_RELEASE_REPOSITORY="$ANLAND_RELEASE_REPOSITORY" \
-        /usr/local/sbin/install-anland-desktop "$DESKTOP" --1 && \
-        echo "--> [开启] $DESKTOP 的 Anland 支持已安装"; \
+    if [ "$DISPLAY_BACKEND" = "anland-next" ]; then \
+        echo "--> [开启] 正在安装 Anland 6.x 会话 (${ANLAND_VERSION})..." && \
+        /usr/local/sbin/install-anlandx "$USERNAME" && \
+        echo "--> [开启] Anland 6.x 会话已安装"; \
     fi && \
     ######################################################################################################
     #输入法 fcitx5 (可选)
@@ -399,6 +400,12 @@ RUN if [ "$ENABLE_systemd257_ARG" = "true" ]; then \
     else \
         echo "--> [跳过] 未启用 systemd 257 旧内核兼容"; \
     fi
+
+# 运行时覆盖层：容器内的网络、会话与首次启动单元。
+COPY rootfs/ /
+RUN chmod +x /usr/local/bin/start-anland-session /usr/local/bin/ds-nat6-up.sh /usr/local/sbin/dagu-firstboot && \
+    systemctl enable anland-session ds-nat6 dagu-firstboot && \
+    systemctl disable getty@tty1 2>/dev/null || true
 
 # 打包前删除仅用于构建的一次性脚本；TUI 和运行时脚本保留。
 RUN rm -f \

@@ -1,0 +1,21 @@
+#!/bin/sh
+# Start the Anland session: the Wayland socket, a rootless Xwayland and the
+# mini window manager. 6.x has no compositor of its own — every toplevel is a
+# Surface the host daemon hands to the Android app — so this only provides the
+# plumbing the container's clients expect.
+set -eu
+
+export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
+export ANLAND_RUNTIME_DIR="${ANLAND_RUNTIME_DIR:-/run/anland}"
+export WAYLAND_DISPLAY="${WAYLAND_DISPLAY:-wayland-0}"
+
+mkdir -p "$XDG_RUNTIME_DIR"
+chmod 700 "$XDG_RUNTIME_DIR"
+
+session="${HOME}/.local/bin/anland-session"
+if [ ! -x "$session" ]; then
+    echo "start-anland-session: $session is missing" >&2
+    exit 1
+fi
+
+exec "$session"
