@@ -147,7 +147,7 @@ su -c "droidspaces --name=kubuntu \
 
 ## 自行构建
 
-**GitHub Actions**：推送到 `main`、推 `v*` 标签，或在 Actions 页面手动触发，都会构建并发布新的 Release，同时更新 `rootfs.json`。
+**GitHub Actions**：`debian` 分支上推送到该分支，或在 Actions 页面手动触发，都会构建 `Dagu-KDE` 并发布新的 Release，同时更新 `rootfs.json`。本分支的工作流只构建这一个模板，不再产出 `Dagu-Anland` 镜像。
 
 **本地**：
 

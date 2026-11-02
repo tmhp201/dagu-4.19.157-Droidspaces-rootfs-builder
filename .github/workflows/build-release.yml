@@ -2,8 +2,7 @@ name: Build and release the Dagu rootfs
 
 on:
   push:
-    branches: [main, debian]
-    tags: ["v*"]
+    branches: [debian]
   workflow_dispatch:
     inputs:
       build_id:
@@ -37,10 +36,8 @@ jobs:
   build:
     needs: meta
     runs-on: ubuntu-24.04-arm
-    strategy:
-      fail-fast: false
-      matrix:
-        template: [Dagu-Anland, Dagu-KDE]
+    env:
+      TEMPLATE: Dagu-KDE
     steps:
       - uses: actions/checkout@v4
 
@@ -63,11 +60,11 @@ jobs:
           docker buildx version
 
       - name: Build rootfs
-        run: ./build.sh -a aarch64 -i "${{ matrix.template }}" -v "${{ needs.meta.outputs.build_id }}"
+        run: ./build.sh -a aarch64 -i "$TEMPLATE" -v "${{ needs.meta.outputs.build_id }}"
 
       - uses: actions/upload-artifact@v4
         with:
-          name: rootfs-${{ matrix.template }}
+          name: rootfs-Dagu-KDE
           path: "*.tar.xz"
           retention-days: 3
           if-no-files-found: error
@@ -88,13 +85,12 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ needs.meta.outputs.build_id }}
-          name: Dagu rootfs ${{ needs.meta.outputs.build_id }}
+          name: Dagu KDE rootfs ${{ needs.meta.outputs.build_id }}
           files: assets/*.tar.xz
           body: |
-            Droidspaces rootfs images for the Xiaomi Pad 5 Pro 12.4.
+            Droidspaces rootfs image for the Xiaomi Pad 5 Pro 12.4.
 
-            - `Dagu-Anland-*`: Ubuntu 26.04 + Anland 6.x Wayland.
-            - `Dagu-KDE-*`: Debian 13 + KDE Plasma on Termux:X11 with Mesa/kgsl.
+            - `Dagu-KDE-*`: Debian 13 + KDE Plasma 6.7 on Termux:X11 with Mesa/kgsl.
 
             Import the tarball as a container rootfs; see README for the container options.
 
