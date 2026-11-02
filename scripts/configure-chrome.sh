@@ -14,7 +14,7 @@ wrapper="${wrapper_dir}/google-chrome"
 }
 
 case "$display_backend" in
-    x11|anland-wayland) ;;
+    x11|anland-wayland|anland-next) ;;
     *)
         echo "无效的 Chrome 显示后端：$display_backend" >&2
         exit 1
