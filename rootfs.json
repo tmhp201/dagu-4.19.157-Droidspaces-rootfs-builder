@@ -2,14 +2,14 @@
   {
     "name": "Dagu KDE (Debian 13)",
     "distro": "Debian",
-    "description": "Debian 13 with KDE Plasma on X11, systemd, Docker and dual-stack networking for Droidspaces on the Xiaomi Pad 5 Pro 12.4.",
+    "description": "Debian 13 with KDE Plasma on Termux:X11 (DISPLAY=:5) and Mesa/kgsl hardware rendering for Droidspaces on the Xiaomi Pad 5 Pro 12.4.",
     "author": "dagu-4.19.157-Droidspaces-rootfs-builder",
     "architecture": "aarch64",
     "file": "Dagu-KDE",
-    "download_url": "https://github.com/univers629/dagu-4.19.157-Droidspaces-rootfs-builder/releases/download/v20261102-010748/Dagu-Anland-Droidspaces-rootfs-aarch64-20261102-v20261102-010748.tar.xz",
-    "sha256": "70179387f0462b61a31813c4f32f19ad1de64e73d59e26c167900232aca66c85",
-    "size_bytes": 777951244,
-    "version": "v20261102-010748",
+    "download_url": "https://github.com/univers629/dagu-4.19.157-Droidspaces-rootfs-builder/releases/download/v20261102-083355/Dagu-KDE-Droidspaces-rootfs-aarch64-20261102-v20261102-083355.tar.xz",
+    "sha256": "5c2670a2f18bce641d9e0a677106f0e751e3fdd967c4e80a75c2ad683c265140",
+    "size_bytes": 631781688,
+    "version": "v20261102-083355",
     "build_date": "20261102"
   }
 ]
