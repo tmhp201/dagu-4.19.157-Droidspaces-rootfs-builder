@@ -51,3 +51,12 @@ if ! su - "$USERNAME" -c "XDG_RUNTIME_DIR=/run/user/1000 ANLAND_XWAYLAND=0 bash 
         exit 1
     fi
 fi
+
+# The session removes the wayland-anland link on exit, which races the
+# replacement session that publishes the same link; keep it instead, the
+# launcher republishes it on every start.
+session="/home/$USERNAME/.local/bin/anland-session"
+if [ -f "$session" ]; then
+    sed -i 's|rm -f "\$STATE" "\$ENVF" "\$WL_LINK"|rm -f "$STATE" "$ENVF"|' "$session"
+fi
+

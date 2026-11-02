@@ -9,8 +9,10 @@ export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
 export ANLAND_RUNTIME_DIR="${ANLAND_RUNTIME_DIR:-/run/anland}"
 export WAYLAND_DISPLAY="${WAYLAND_DISPLAY:-wayland-0}"
 
-mkdir -p "$XDG_RUNTIME_DIR"
-chmod 700 "$XDG_RUNTIME_DIR"
+# /run/user/1000 comes from the unit; tolerate a missing directory, since its
+# parent is not writable for this user.
+mkdir -p "$XDG_RUNTIME_DIR" 2>/dev/null || true
+chmod 700 "$XDG_RUNTIME_DIR" 2>/dev/null || true
 
 session="${HOME}/.local/bin/anland-session"
 if [ ! -x "$session" ]; then
@@ -18,4 +20,31 @@ if [ ! -x "$session" ]; then
     exit 1
 fi
 
-exec "$session"
+# The session clears its runtime directory and only links the socket into
+# ANLAND_RUNTIME_DIR, so run it first and publish the name its children use
+# once the socket exists.
+"$session" &
+pid=$!
+
+i=0
+while [ ! -S "$ANLAND_RUNTIME_DIR/$WAYLAND_DISPLAY" ]; do
+    i=$((i + 1))
+    if [ "$i" -ge 60 ]; then
+        echo "start-anland-session: no socket at $ANLAND_RUNTIME_DIR/$WAYLAND_DISPLAY" >&2
+        break
+    fi
+    sleep 1
+done
+
+ln -sf "$ANLAND_RUNTIME_DIR/$WAYLAND_DISPLAY" "$XDG_RUNTIME_DIR/wayland-anland" || true
+
+# A session that is being replaced removes the link from its exit trap, which
+# can land after the new one has published it. Re-publish for a few seconds.
+i=0
+while [ "$i" -lt 10 ]; do
+    ln -sf "$ANLAND_RUNTIME_DIR/$WAYLAND_DISPLAY" "$XDG_RUNTIME_DIR/wayland-anland" || true
+    i=$((i + 1))
+    sleep 1
+done
+
+wait "$pid"

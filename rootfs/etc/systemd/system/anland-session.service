@@ -12,6 +12,7 @@ Environment=XDG_RUNTIME_DIR=/run/user/1000
 Environment=ANLAND_RUNTIME_DIR=/run/anland
 EnvironmentFile=-/etc/environment
 EnvironmentFile=-/run/droidspaces.env
+ExecStartPre=+/usr/bin/install -d -m 0700 -o 1000 -g 1000 /run/user/1000
 ExecStart=/usr/local/bin/start-anland-session
 Restart=on-failure
 RestartSec=3s
