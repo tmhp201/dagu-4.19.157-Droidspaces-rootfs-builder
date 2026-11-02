@@ -103,11 +103,6 @@ RUN apt-get update && \
     kmod tzdata tar && \
     /usr/local/sbin/install-desktop "$DESKTOP" && \
     ############################################## Anland Wayland 支持 ################################################
-    if [ "$DISPLAY_BACKEND" = "anland-next" ]; then \
-        echo "--> [开启] 正在安装 Anland 6.x 会话 (${ANLAND_VERSION})..." && \
-        /usr/local/sbin/install-anlandx "$USERNAME" && \
-        echo "--> [开启] Anland 6.x 会话已安装"; \
-    fi && \
     ######################################################################################################
     #输入法 fcitx5 (可选)
     if [ "$ENABLE_srf_ARG" = "true" ]; then \
@@ -163,6 +158,13 @@ RUN sed -i '/en_US.UTF-8/s/^# //' /etc/locale.gen && \
 
 # 为所有 Ubuntu RootFS 安装 Droidspaces USB Manager
 RUN /usr/local/sbin/install-droidspaces-usb-manager --user "${USERNAME}"
+
+# Anland 6.x 会话装到桌面用户的家目录，必须在上面的 useradd 之后执行。
+RUN if [ "$DISPLAY_BACKEND" = "anland-next" ]; then \
+        echo "--> [开启] 正在安装 Anland 6.x 会话 (${ANLAND_VERSION})..." && \
+        /usr/local/sbin/install-anlandx "$USERNAME" && \
+        echo "--> [开启] Anland 6.x 会话已安装"; \
+    fi
 
 
 # 初始化环境变量文件；桌面专属变量由对应 profile 管理。
