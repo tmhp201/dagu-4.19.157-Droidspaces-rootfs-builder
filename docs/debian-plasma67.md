@@ -128,6 +128,19 @@ su -c 'T=/data/data/com.termux/files/usr; CLASSPATH=$T/libexec/termux-x11/loader
 
 实测（Adreno 650 / 4.19）：`glxinfo -B` 报 `freedreno (0x5143)`、`FD650`、Mesa 26.3.0、`direct rendering: Yes`；`glmark2 -b build:duration=2` 在 640x360 下 935 分；`systemctl is-active desktop-session` 为 `active`，`plasmashell`、`kwin_x11`、`ksmserver` 都在。
 
+## 音频与 Docker
+
+**音频**：容器以 `enable_pulseaudio=1` 启动时，Droidspaces 用 Termux 的 `pulseaudio`（以 `u0_a289` 运行，留在 `droidspacesd` permissive 域）在 Android 侧起服务，并把 socket 桥到 `/tmp/.pulse-socket`。实测可用：
+
+```sh
+pactl list short sinks            # OpenSL_ES_sink / AAudio_sink
+speaker-test -c 2 -t sine -l 1    # 登录 shell 里跑，/etc/environment 已带 PULSE_SERVER
+```
+
+`droidspaces run` 用的是 Android 的 PATH 与环境，里面没有 `PULSE_SERVER`，ALSA 的 pulse 插件会连默认路径并报 `-112 Host is down`；用 `su -l dagu -c ...` 或自己 export 即可。开 `enable_pulseaudio=1` 本身不会像 `--x11` 那样重启设备。
+
+**Docker**：trixie 的 `docker.io` 只提供 `dockerd`，CLI 拆到了 `docker-cli`，模板两个都装。dockerd 以 overlay2 起得来，`docker run --rm hello-world` 实测通过；`/etc/docker/daemon.json` 预设了 `docker.m.daocloud.io` 与 `docker.1ms.run` 两个镜像源。
+
 ## 验证
 
 容器内：

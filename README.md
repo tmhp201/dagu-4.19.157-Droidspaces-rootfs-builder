@@ -121,6 +121,8 @@ ls -l /run/user/1000/wayland-anland         # 指向 /run/anland/wayland-0
 | 显示 | `anland-session` | Termux:X11，`desktop-session.service` → `startplasma-x11` |
 | 渲染 | Mesa/kgsl（Anland 后端） | Mesa/kgsl（`MESA_LOADER_DRIVER_OVERRIDE=kgsl`） |
 | 容器开关 | Anland 开、Termux:X11 关 | **Termux:X11 开**、Anland 关 |
+| 音频 | PulseAudio（Anland 会话内置） | PulseAudio，`enable_pulseaudio=1`，socket 桥到 `/tmp/.pulse-socket` |
+| Docker | docker + containerd | docker.io + docker-cli + buildx + compose，overlay2 |
 
 安装时向导取值与 [安装](#安装) 相同，只有两处不同：**配置 Termux:X11 选开**、**Anland 选关**。
 

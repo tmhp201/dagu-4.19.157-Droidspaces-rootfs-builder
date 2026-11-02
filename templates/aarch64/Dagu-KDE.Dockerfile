@@ -73,11 +73,13 @@ RUN apt-get update && \
     && /usr/local/sbin/install-desktop "$DESKTOP"
 
 # 可选：压缩工具与 Docker（容器内由 Droidspaces 提供网络与 GPU 节点）。
+# trixie 把 docker CLI 拆成了独立的 docker-cli（docker.io 只留 dockerd），
+# 26.1.5 这一版不构成 Breaks，可以和服务端一起装。
 RUN if [ "$ENABLE_zip_ARG" = "true" ]; then \
         apt-get install -y --no-install-recommends 7zip unzip bzip2; \
     fi && \
     if [ "$ENABLE_docker_ARG" = "true" ]; then \
-        apt-get install -y --no-install-recommends docker.io docker-buildx docker-compose && \
+        apt-get install -y --no-install-recommends docker.io docker-cli docker-buildx docker-compose && \
         { update-alternatives --set iptables /usr/sbin/iptables-legacy 2>/dev/null || true; }; \
     fi
 
