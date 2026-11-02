@@ -11,8 +11,9 @@ case "${DESKTOP:-}:${DISPLAY_BACKEND:-}" in
     # 启动前等 socket 就绪（最多 30 秒），否则 Plasma 会在 DISPLAY 上直接失败。
     kde:x11)
         command_line='export DISPLAY="${DISPLAY:-:5}"
-x11_socket="/tmp/.X11-unix/X${DISPLAY#*:}"
-x11_socket="${x11_socket%%.*}"
+x11_display="${DISPLAY#*:}"
+x11_display="${x11_display%%.*}"
+x11_socket="/tmp/.X11-unix/X${x11_display}"
 for _ in $(seq 1 300); do
     [[ -S "$x11_socket" ]] && break
     sleep 0.1

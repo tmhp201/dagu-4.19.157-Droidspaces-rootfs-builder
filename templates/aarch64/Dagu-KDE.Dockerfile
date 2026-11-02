@@ -59,6 +59,9 @@ RUN chmod +x /usr/local/sbin/install-desktop /usr/local/sbin/configure-desktop \
         /etc/dpkg/dpkg.cfg.d/excludes 2>/dev/null || true
 
 # 基础运行时：systemd 257 / dbus / ssh / 网络工具，然后由 profile 安装 KDE。
+# libllvm19 是 Mesa-for-Android（26.3.0-devel）的硬依赖：缺它 libEGL_mesa 无法
+# 加载，GLX/EGL 全部退化，kwin 与 Qt Quick 都起不来。trixie 自带这个版本，
+# 由 sid 引入的 libllvm22 不会被卸载。
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
     bash ca-certificates curl wget jq locales tzdata \
@@ -66,6 +69,7 @@ RUN apt-get update && \
     sudo openssh-server net-tools iproute2 iputils-ping iptables bind9-dnsutils \
     procps psmisc util-linux file findutils grep sed gawk \
     tar gzip xz-utils unzip zip bash-completion less git nano \
+    libllvm19 \
     && /usr/local/sbin/install-desktop "$DESKTOP"
 
 # 可选：压缩工具与 Docker（容器内由 Droidspaces 提供网络与 GPU 节点）。
@@ -129,9 +133,15 @@ RUN case "$PulseAudio" in \
     esac
 
 # 桌面会话：写 /etc/droidspaces-desktop.conf、kwinrc，并安装 desktop-session.service。
+# 锁屏默认关闭：X11 会话跑在 Termux:X11 上，没有虚拟终端可以切过去执行
+# loginctl unlock，锁屏组件一旦失败就只剩一块黑板。
 RUN echo 'export XDG_RUNTIME_DIR=/run/user/$(id -u)' >> "/home/${USERNAME}/.bashrc" && \
     KDE_COMPOSITING="${KDE_COMPOSITING}" /usr/local/sbin/configure-desktop \
         "$DESKTOP" "$DISPLAY_BACKEND" "$DESKTOP_AUTOSTART" "$USERNAME" && \
+    install -d -m 0700 -o 1000 -g 1000 "/home/${USERNAME}/.config" && \
+    printf '[Daemon]\nAutolock=false\nLockOnStart=false\n' \
+        > "/home/${USERNAME}/.config/kscreenlockerrc" && \
+    chown -R 1000:1000 "/home/${USERNAME}/.config" && \
     rm -rf /tmp/droidspaces-start
 
 # Mesa 驱动适配：从 droidspaces-package 取 Debian 13(arm64) 的 Mesa 并按发行版持包。
@@ -221,8 +231,17 @@ if [ "$ENABLE_yj_ARG" = "true" ]; then
         fi
     done
 else
-    for service in systemd-udevd.service systemd-resolved.service systemd-networkd.service NetworkManager.service; do
+    # systemd-networkd 与 systemd-resolved 必须保留：Droidspaces 的 --net=nat 会在
+    # 宿主侧起内建 DHCP 服务器，容器这一侧靠 systemd-networkd 按
+    # /etc/systemd/network/10-droidspaces.network 去要地址；把它屏蔽掉 eth0 就永远
+    # 没有 IPv4，DNS 也一起失效。udevd 与 NetworkManager 仍然屏蔽。
+    for service in systemd-udevd.service NetworkManager.service; do
         ln -sf /dev/null "/etc/systemd/system/$service"
+    done
+    for service in systemd-resolved.service systemd-networkd.service; do
+        if [ -f "$GUEST_SYSTEMD_PATH/$service" ]; then
+            ln -sf "$GUEST_SYSTEMD_PATH/$service" "/etc/systemd/system/multi-user.target.wants/$service"
+        fi
     done
 fi
 

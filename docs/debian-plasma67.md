@@ -49,10 +49,10 @@ systemd、udev、dbus-daemon、libdbus-1-3、kmod 全部保持 trixie 版本；`
 | 显示服务 | Droidspaces `--x11`：Android 端起 Termux:X11，socket `/tmp/.X11-unix/X5` 挂进容器，登录 shell 得到 `DISPLAY=:5` |
 | 会话 | `/etc/droidspaces-desktop.conf` 写 `DESKTOP=kde`、`DISPLAY_BACKEND=x11`；`desktop-session.service` 以 1000 号用户执行 `/usr/local/bin/start-desktop-session` → `startplasma-x11` |
 | 渲染 | `/etc/environment` 写 `MESA_LOADER_DRIVER_OVERRIDE=kgsl`、`TU_DEBUG=noconform`；Mesa 来自 `install-mesa`（`debian_trixie_arm64` 包，arm64 专用构建） |
-| 合成器 | `KDE_COMPOSITING=true` 时 kwin 的 OpenGL 合成器走 Mesa/kgsl；默认关闭（`kwinrc` `[Compositing] Enabled=false`），与 Anland 分支一致，只让应用自己用 GPU 绘制 |
+| 合成器 | `KDE_COMPOSITING=true` 时 kwin 的 OpenGL 合成器走 Mesa/kgsl；默认关闭（`kwinrc` `[Compositing] Enabled=false`）：真机上打开后 kwin 能拿到渲染上下文，但画面不出现在 Termux:X11 上（黑屏），只让应用自己用 GPU 绘制 |
 | GPU 节点 | Droidspaces `--gpu` 镜像 `/dev/kgsl-3d0`、`/dev/dri/renderD*`；容器用户需在 `droidspaces-gpu` 组（gid 786，构建时已加） |
 
-4.19 厂商内核没有 `msm` DRM，只有 `/dev/kgsl-3d0`，因此不能走 Zink/VirGL 那套；Freedreno 的 `kgsl` 后端是唯一的硬件 GL 路径。
+4.19 厂商内核没有 `msm` DRM，只有 `/dev/kgsl-3d0`，因此不能走 Zink/VirGL 那套；Freedreno 的 `kgsl` 后端是唯一的硬件 GL 路径。Mesa-for-Android 的 `libEGL_mesa`/`libgallium` 链接 `libLLVM.so.19.1`，所以镜像必须装发行版的 `libllvm19`（trixie 自带 `1:19.1.7-3+b1`）；缺它时 `libEGL_mesa` 加载失败，`glxinfo` 报 `couldn't find RGB GLX visual or fbconfig`，kwin 与 plasmashell 都起不来。
 
 ## 构建
 
@@ -110,8 +110,8 @@ systemctl status desktop-session.service   # active (running)
 startplasma-x11 --version                  # Plasma 6.7.x
 dpkg -s plasma-workspace | grep Version    # 4:6.7.4-*
 systemd --version                          # systemd 257
-glxinfo -B | grep -E "renderer|OpenGL"     # 应出现 kgsl / Adreno
-glmark2 -s 1280x800                        # 与 Adreno 730 约 1360 分同一量级
+glxinfo -B | grep -E "renderer|OpenGL"     # Vendor: freedreno / Device: FD650 / direct rendering: Yes
+glxgears -info                             # 5 秒约 600 帧（vsync 封顶 120 FPS）
 ```
 
 宿主：
@@ -125,7 +125,8 @@ su -c "cat /run/droidspaces/containers/kde/container.config" | grep -E "enable_x
 | 风险 | 说明 | 回退 |
 | --- | --- | --- |
 | glibc 混装 | 2.43 的 `libc6` 配 257 的 systemd 属于 Debian 不支持的 partial upgrade | `KDE_STACK=trixie` 重新构建，退回 Plasma 6.3.6 |
-| kwin 合成器 | 打开后依赖 GLX/DRI3 与 present wait fence，驱动不稳时黑屏 | 删掉 `~/.config/kwinrc` 的 `[Compositing]` 或重建时 `KDE_COMPOSITING=false` |
+| kwin 合成器 | 打开后 kwin 能初始化 OpenGL，但画面不出现在 Termux:X11（实测整屏黑，只剩光标）；GLX/DRI3 + kgsl 的呈现路径还没打通 | 默认关闭（`KDE_COMPOSITING=false`）；应用仍走 GPU 的 GLX/EGL |
+| 容器网络 | Droidspaces `--net=nat` 依赖容器内 DHCP 客户端；`systemd-networkd` 被屏蔽时 eth0 拿不到地址、DNS 全失效 | 镜像已保留 networkd/resolved，只屏蔽 udevd 与 NetworkManager |
 | Plasma 6.8 | 上游去掉 X11 会话，本方案停在 6.7.x 不再上移 | 无：再往上必须转 Wayland |
 | Mesa 版本 | `install-mesa` 装的是预编译 arm64 包，版本跟随上游发布 | `install-mesa --uninstall` 回到发行版 Mesa（kgsl 不可用） |
 
