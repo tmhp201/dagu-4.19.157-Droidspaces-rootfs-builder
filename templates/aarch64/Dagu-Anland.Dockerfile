@@ -67,7 +67,7 @@ RUN if [ "$DISPLAY_BACKEND" = "anland-wayland" ]; then \
     rm -f /tmp/Anland-Audio.conf
 
 # 赋予相关脚本可执行权限
-RUN chmod +x /usr/local/sbin/install-anlandx /usr/local/bin/download-firmware /usr/local/sbin/nosnap /etc/profile.d/ds-aliases.sh /usr/local/sbin/install-anland-* /usr/local/sbin/install-mesa /usr/local/sbin/install-hangover-wine /usr/local/sbin/install-winefonts /usr/local/sbin/install-desktop /usr/local/sbin/configure-desktop /usr/local/sbin/configure-chrome /usr/local/bin/droidspaces-tui /usr/local/bin/start-anland-session /usr/local/lib/droidspaces/desktops/*.sh && \
+RUN chmod +x /usr/local/sbin/install-anlandx /usr/local/bin/download-firmware /usr/local/sbin/nosnap /etc/profile.d/ds-aliases.sh /usr/local/sbin/install-anland-* /usr/local/sbin/install-mesa /usr/local/sbin/install-hangover-wine /usr/local/sbin/install-winefonts /usr/local/sbin/install-desktop /usr/local/sbin/configure-desktop /usr/local/sbin/configure-chrome /usr/local/bin/droidspaces-tui /usr/local/lib/droidspaces/desktops/*.sh && \
     ln -s droidspaces-tui /usr/local/bin/dstui && \
     ln -s droidspaces-tui /usr/local/bin/ds-tui
 
