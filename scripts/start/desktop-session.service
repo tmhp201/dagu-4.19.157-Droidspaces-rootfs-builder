@@ -10,9 +10,10 @@ Type=simple
 User=1000
 PAMName=login
 EnvironmentFile=-/etc/environment
-# x11 后端依赖 Droidspaces 的 --x11（Termux:X11）；容器没开 enable_x11 时直接跳过，
+# x11 后端依赖 Termux:X11 的 socket：容器开了 enable_x11=1，或者宿主把
+# :X11-unix 挂进 /tmp/.X11-unix（绕过 --x11）时都要起会话；两者都没有则跳过，
 # 否则单元会一直 Restart 循环。socket 就绪由 start-desktop-session 自己等。
-ExecCondition=/bin/sh -c 'grep -q "^DISPLAY_BACKEND=x11" /etc/droidspaces-desktop.conf 2>/dev/null || exit 0; grep -q "enable_x11=1" /run/droidspaces/container.config'
+ExecCondition=/bin/sh -c 'grep -q "^DISPLAY_BACKEND=x11" /etc/droidspaces-desktop.conf 2>/dev/null || exit 0; grep -q "enable_x11=1" /run/droidspaces/container.config 2>/dev/null || ls /tmp/.X11-unix/X* >/dev/null 2>&1'
 ExecStart=/usr/local/bin/start-desktop-session
 Restart=on-failure
 RestartSec=2s

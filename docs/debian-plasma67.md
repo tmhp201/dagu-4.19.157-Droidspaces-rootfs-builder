@@ -100,6 +100,24 @@ droidspaces --name=kde --rootfs-img=dagu-kde.img --init=/sbin/init \
   --net=nat --dns=223.5.5.5,8.8.8.8 --gpu --x11 --pulse-audio --allow-sandboxing start
 ```
 
+`--x11` 会让 Droidspaces 以 termux 用户 `app_process` 起 Termux:X11，这一步在 dagu 上会直接重启设备（现象：命令无输出、`uptime` 归零）。实际按下面两条走：
+
+```sh
+# 宿主机：Android 侧先打开 Termux:X11 应用，再启动容器（不带 --x11 / --pulse-audio）
+su -c "droidspaces --name=deb13 \
+  --rootfs=/data/local/Droidspaces/Containers/deb13/rootfs \
+  --init=/sbin/init --net=nat --dns=223.5.5.5,8.8.8.8 --gpu \
+  -B /data/data/com.termux/files/usr/tmp:/mnt/termux start"
+```
+
+```sh
+# 容器内：把宿主挂进来的 socket 目录桥到 /tmp/.X11-unix
+mount --bind /mnt/termux/.X11-unix /tmp/.X11-unix
+systemctl restart desktop-session
+```
+
+`desktop-session.service` 的 `ExecCondition` 认两种情况：`container.config` 里 `enable_x11=1`，或者 `/tmp/.X11-unix/X*` 已存在，所以上面的手工桥接也能把会话拉起来。
+
 ## 验证
 
 容器内：
@@ -139,4 +157,4 @@ export APT_CONFIG=/tmp/deb-sim/apt.conf   # 指向 arm64 的 trixie + sid 索引
 apt-get -s install --no-install-recommends $(sed 's|$|/sid|' pkgs.txt)
 ```
 
-61 个 unstable 目标、18 个升级、880 个新装、0 卸载，即上面的表。
+61 个 unstable 目标、18 个升级、880 个新装、0 卸载，见上表。

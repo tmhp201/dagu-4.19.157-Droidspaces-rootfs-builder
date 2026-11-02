@@ -122,12 +122,28 @@ ls -l /run/user/1000/wayland-anland         # 指向 /run/anland/wayland-0
 | 渲染 | Mesa/kgsl（Anland 后端） | Mesa/kgsl（`MESA_LOADER_DRIVER_OVERRIDE=kgsl`） |
 | 容器开关 | Anland 开、Termux:X11 关 | **Termux:X11 开**、Anland 关 |
 
-安装时向导取值与 [安装](#安装) 相同，只有两处不同：**配置 Termux:X11 选开**、**Anland 选关**。首次启动后：
+安装时向导取值与 [安装](#安装) 相同，只有两处不同：**配置 Termux:X11 选开**、**Anland 选关**。
+
+`--x11` 在这台设备上会触发重启：Droidspaces 以 termux 用户 `app_process` 拉起 Termux:X11 的那条路径会直接把机器带下去。绕开的做法是让容器启动时不带 `--x11`，改把 Termux:X11 的 socket 目录挂进来：
+
+```sh
+# 宿主：先在 Android 侧打开 Termux:X11 应用，再启动容器
+su -c "droidspaces --name=deb13 \
+  --rootfs=/data/local/Droidspaces/Containers/deb13/rootfs \
+  --init=/sbin/init --net=nat --dns=223.5.5.5,8.8.8.8 --gpu \
+  -B /data/data/com.termux/files/usr/tmp:/mnt/termux start"
+
+# 容器内（root）：把 socket 桥到 /tmp/.X11-unix
+mount --bind /mnt/termux/.X11-unix /tmp/.X11-unix
+systemctl restart desktop-session
+```
+
+首次启动后：
 
 ```sh
 systemctl status desktop-session.service   # active (running)
 dpkg -s plasma-workspace | grep Version    # 4:6.7.4-*
-glxinfo -B | grep renderer                 # kgsl / Adreno
+glxinfo -B | grep -E "Vendor|Device"       # freedreno / FD650
 ```
 
 Plasma 6.7 要求 glibc ≥ 2.43，而 trixie 是 2.41，模板因此从 unstable 取 KDE/Qt/KF6，并把 systemd、udev、dbus 等底座按精确版本钉死在 trixie；构建期还会断言 systemd 运行时与包族都是 257，否则不产出镜像。镜像内置 Docker 26.1、buildx 与 compose，CI 在 runner 上先补装 docker 与 CLI 再调用 `build.sh`。依赖解析与回退方式见 [docs/debian-plasma67.md](docs/debian-plasma67.md)。
