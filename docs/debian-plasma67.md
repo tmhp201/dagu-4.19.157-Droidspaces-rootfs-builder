@@ -118,6 +118,16 @@ systemctl restart desktop-session
 
 `desktop-session.service` 的 `ExecCondition` 认两种情况：`container.config` 里 `enable_x11=1`，或者 `/tmp/.X11-unix/X*` 已存在，所以上面的手工桥接也能把会话拉起来。
 
+顺序不能反：`-B` 在启动时就把源目录挂进来，先起容器再起 X 服务器会挂到空目录。没有图形界面时可以用 loader 手工起服务器（显示号固定 `:5`）：
+
+```sh
+su -c 'T=/data/data/com.termux/files/usr; CLASSPATH=$T/libexec/termux-x11/loader.apk \
+  TMPDIR=$T/tmp setsid /system/bin/app_process -Xnoimage-dex2oat / \
+  --nice-name="termux-x11 com.termux.x11 :5" com.termux.x11.Loader :5'
+```
+
+实测（Adreno 650 / 4.19）：`glxinfo -B` 报 `freedreno (0x5143)`、`FD650`、Mesa 26.3.0、`direct rendering: Yes`；`glmark2 -b build:duration=2` 在 640x360 下 935 分；`systemctl is-active desktop-session` 为 `active`，`plasmashell`、`kwin_x11`、`ksmserver` 都在。
+
 ## 验证
 
 容器内：

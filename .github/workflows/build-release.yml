@@ -3,6 +3,9 @@ name: Build and release the Dagu rootfs
 on:
   push:
     branches: [debian]
+    paths-ignore:
+      - "**.md"
+      - "docs/**"
   workflow_dispatch:
     inputs:
       build_id:
