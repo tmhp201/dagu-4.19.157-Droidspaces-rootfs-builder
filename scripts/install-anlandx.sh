@@ -19,13 +19,19 @@ apt-get install -y --no-install-recommends \
     libxtst-dev libxrender-dev libxcomposite-dev libxkbfile-dev \
     libwayland-dev wayland-protocols
 
-tmp="$(mktemp -d)"
+# The installer drops privileges to the desktop user, which needs to read the
+# extracted tree, so build it somewhere world-traversable instead of a private
+# mktemp directory.
+tmp=/opt/anlandx-src
+rm -rf "$tmp"
+install -d -m 0755 "$tmp"
 trap 'rm -rf "$tmp"' EXIT
 
 curl -fsSL -o "$tmp/anland.zip" \
     "https://github.com/SuperTurtleDev/anland/releases/download/${VERSION}/anland-build.2.zip"
 unzip -o -q "$tmp/anland.zip" anlandx.tar.gz -d "$tmp"
 tar xzf "$tmp/anlandx.tar.gz" -C "$tmp"
+chmod -R a+rX "$tmp"
 
 # The session installs into the user's home and builds only the small helpers;
 # the distro Xwayland is good enough (ANLAND_XWAYLAND=0) because the GL fixes
