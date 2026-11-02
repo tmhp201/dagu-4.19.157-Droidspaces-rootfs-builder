@@ -32,7 +32,7 @@
 | ncurses 族 | `ncurses-base`、`ncurses-bin`、`ncurses-term`、`libncursesw6`、`libtinfo6` |
 | dbus 数据包 | `dbus-session-bus-common`、`dbus-system-bus-common`（`dbus-daemon` 仍是 trixie 1.16.2） |
 
-systemd、udev、dbus-daemon、libdbus-1-3、kmod 全部保持 trixie 版本；`debian_unstable_verify` 会在安装后逐包比对安装前记录的版本，任何一个被改动就构建失败。
+systemd、udev、dbus-daemon、libdbus-1-3、kmod 全部保持 trixie 版本；`debian_unstable_verify` 在装完 KDE 后把 unstable 源排除在外，逐包比对「已安装版本」与「trixie 候选版本」，两者不一致即构建失败。trixie-updates 的补丁版本可以通过，unstable 的版本不能。
 
 三处与 apt 有关的实现约束（`scripts/desktops/kde.sh` 内有对应注释）：
 
@@ -75,7 +75,7 @@ systemd、udev、dbus-daemon、libdbus-1-3、kmod 全部保持 trixie 版本；`
 
 4.19 内核上验证过的 systemd 是 257，本镜像在两个层面把它固定下来：
 
-- 构建期：`KDE_DEBIAN_BASE_PINNED` 把 systemd 家族按精确版本钉在 trixie，`debian_unstable_verify` 在装完 KDE 后逐包比对安装前记录的版本，任何版本变动即失败；模板随后再断言 `systemctl --version` 的主版本为 257、`systemd`/`udev`/`libsystemd*`/`libudev*` 全部落在 `257.*`。断言失败直接中断构建，不会产出镜像。
+- 构建期：`KDE_DEBIAN_BASE_PINNED` 把 systemd 家族按精确版本钉在 trixie，`debian_unstable_verify` 在装完 KDE 后逐包比对已安装版本与 trixie 候选版本，不一致即失败；模板随后再断言 `systemctl --version` 的主版本为 257、`systemd`/`udev`/`libsystemd*`/`libudev*` 全部落在 `257.*`。断言失败直接中断构建，不会产出镜像。
 - 运行期：发行版自带的 257 即目标版本，不再替换整套 systemd；networkd 仍使用 `rootfs/` 里的 `10-droidspaces.network`（`IPv6AcceptRA=no`）与 `ds-nat6.service`，绕开 networkd 257 用 nexthop 对象下发 RA 路由、而 4.19 不支持的老问题。
 
 `ENABLE_SYSTEMD257=true` 调用的是与上游同一份 `systemd257.sh`：它只对 Ubuntu 26.04、Fedora 43/44 和 Arch 提供预构建包族，遇到已经是 257 的发行版会记录一行后返回，既不会重装也不会报错；只有「systemd 不是 257 且发行版没有预构建包族」时才失败。改成 `false` 只跳过这一层检查，构建期的版本断言仍然生效。

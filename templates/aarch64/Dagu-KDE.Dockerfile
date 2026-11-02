@@ -298,9 +298,9 @@ RUN rm -f /etc/systemd/system/anland-session.service \
 RUN rm -f \
         /usr/local/sbin/configure-desktop \
         /usr/local/sbin/install-desktop \
-        /usr/local/sbin/install-mesa && \
+        /usr/local/sbin/install-mesa \
+        /usr/local/sbin/systemd257 && \
     rm -rf /usr/local/lib/droidspaces/desktops && \
-    rm -f /tmp/droidspaces-base-versions && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 

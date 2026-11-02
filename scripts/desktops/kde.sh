@@ -51,7 +51,6 @@ readonly KDE_DEBIAN_BASE_PINNED=(
     init-system-helpers kmod
 )
 
-readonly KDE_RUNTIME_BASELINE=/tmp/droidspaces-base-versions
 
 readonly KDE_DEBIAN_NATIVE_PACKAGES=(
     dbus-x11 x11-xserver-utils fonts-noto-cjk fonts-noto-color-emoji
@@ -124,23 +123,43 @@ EOF
         done
     } > /etc/apt/preferences.d/10-droidspaces-unstable.pref
 
-    debian_unstable_record_runtime
     apt-get update
 }
 
-debian_unstable_record_runtime() {
-    local package version
+# 只读 trixie 源解析候选版本：把 unstable 源排除在 sourceparts 之外，
+# 这样候选版本就是 trixie / trixie-updates 里最高的那个。
+debian_trixie_version() {
+    local package="$1" source trixie_dir
 
-    : > "$KDE_RUNTIME_BASELINE"
-    for package in "${KDE_DEBIAN_BASE_PINNED[@]}"; do
-        version="$(dpkg-query -W -f='${Version}' "$package" 2>/dev/null || true)"
-        [ -n "$version" ] || continue
-        printf '%s %s\n' "$package" "$version" >> "$KDE_RUNTIME_BASELINE"
+    trixie_dir="$(mktemp -d -t droidspaces-trixie.XXXXXXXX)"
+    mkdir -p "$trixie_dir/prefs"
+    : > "$trixie_dir/preferences"
+    if [ -f /etc/apt/sources.list ]; then
+        cp /etc/apt/sources.list "$trixie_dir/sources.list"
+    else
+        : > "$trixie_dir/sources.list"
+    fi
+    for source in /etc/apt/sources.list.d/*; do
+        [ -f "$source" ] || continue
+        case "$source" in
+            */20-droidspaces-unstable.sources) continue ;;
+        esac
+        cp "$source" "$trixie_dir/"
     done
+
+    # 同时忽略构建期写的 pin：它们把候选版本钉在安装前的 trixie 版本上，
+    # 会让 trixie-updates 的补丁版本看起来像越界。
+    LC_ALL=C apt-cache \
+        -o Dir::Etc::sourcelist="$trixie_dir/sources.list" \
+        -o Dir::Etc::sourceparts="$trixie_dir" \
+        -o Dir::Etc::preferences="$trixie_dir/preferences" \
+        -o Dir::Etc::preferencesparts="$trixie_dir/prefs" \
+        policy "$package" 2>/dev/null | sed -n 's/^ *Candidate: *//p'
+    rm -rf "$trixie_dir"
 }
 
 debian_unstable_verify() {
-    local package current expected version
+    local package current trixie_version version
 
     for package in plasma-desktop plasma-workspace kwin-x11; do
         version="$(dpkg-query -W -f='${Version}' "$package" 2>/dev/null || true)"
@@ -157,15 +176,17 @@ debian_unstable_verify() {
         [ -e "$package" ] || { echo "Plasma 6.7 缺少 X11 会话入口：$package" >&2; return 1; }
     done
 
-    # 运行时栈逐包比对安装前的版本：dbus 曾被 dbus-x11 的精确版本依赖悄悄带走，
-    # systemd 一旦被拉到 262，镜像在 4.19 上起不来。
-    while read -r package expected; do
+    # 运行时栈必须停在 trixie：systemd 一旦被拉到 262，镜像在 4.19 上起不来。
+    # 允许 trixie-updates 的补丁版本，但不接受 unstable 的版本。
+    for package in "${KDE_DEBIAN_BASE_PINNED[@]}"; do
         current="$(dpkg-query -W -f='${Version}' "$package" 2>/dev/null || true)"
-        if [ "$current" != "$expected" ]; then
-            echo "运行时栈被改动：$package 从 '$expected' 变成 '${current:-未安装}'" >&2
+        [ -n "$current" ] || continue
+        trixie_version="$(debian_trixie_version "$package")"
+        if [ -n "$trixie_version" ] && [ "$current" != "$trixie_version" ]; then
+            echo "运行时栈没有停在 trixie：$package 为 $current，trixie 只有 $trixie_version" >&2
             return 1
         fi
-    done < "$KDE_RUNTIME_BASELINE"
+    done
 
     printf '[kde] glibc %s / Qt %s / systemd %s\n' \
         "$(dpkg-query -W -f='${Version}' libc6)" \
