@@ -10,9 +10,9 @@ Type=simple
 User=1000
 PAMName=login
 EnvironmentFile=-/etc/environment
-# x11 后端依赖 Termux:X11 的 socket：容器开了 enable_x11=1，或者宿主把
-# :X11-unix 挂进 /tmp/.X11-unix（绕过 --x11）时都要起会话；两者都没有则跳过，
-# 否则单元会一直 Restart 循环。socket 就绪由 start-desktop-session 自己等。
+# x11 后端必须有 socket 才起会话，否则单元会一直 Restart 循环。开机时
+# Termux:X11 往往还没启动，所以这里不负责等待：droidspaces-x11-watch.path
+# 盯着 /tmp/.X11-unix/X5，socket 一出现就再次 start 本单元。
 ExecCondition=/bin/sh -c 'grep -q "^DISPLAY_BACKEND=x11" /etc/droidspaces-desktop.conf 2>/dev/null || exit 0; grep -q "enable_x11=1" /run/droidspaces/container.config 2>/dev/null || ls /tmp/.X11-unix/X* >/dev/null 2>&1'
 # 桥接脚本可重复执行：开机时 Termux:X11 尚未启动则由这里补挂。Anland 模板没有
 # 这个脚本，前缀 - 让缺失或失败都不影响会话启动。

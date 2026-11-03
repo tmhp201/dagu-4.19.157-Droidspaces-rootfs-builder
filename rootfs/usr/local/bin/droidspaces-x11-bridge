@@ -2,13 +2,15 @@
 # 把宿主挂进 /mnt/termux 的 Termux:X11 socket 目录桥到 /tmp/.X11-unix。
 # Droidspaces 的 --x11 会以 termux 用户拉起 app_process，在 dagu 上直接重启设备，
 # 因此容器改用 -B 挂载整个 Termux tmp 目录，由本脚本补上 X11 客户端要看的路径。
+#
+# 这里挂的是目录本身，而不是目录里的 X5：Termux:X11 晚于容器启动时，socket 文件
+# 稍后出现在被挂载的目录里，容器内立刻可见，不需要重新挂载。
 set -e
 
 src=/mnt/termux/.X11-unix
 dst=/tmp/.X11-unix
 
 [ -d "$src" ] || exit 0
-[ -n "$(ls -A "$src" 2>/dev/null)" ] || exit 0
 
 mkdir -p "$dst"
 if mountpoint -q "$dst"; then

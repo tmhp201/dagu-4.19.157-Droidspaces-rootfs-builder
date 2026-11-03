@@ -1,0 +1,9 @@
+[Unit]
+Description=监视 Termux:X11 的 socket
+
+[Path]
+PathExists=/tmp/.X11-unix/X5
+Unit=desktop-session.service
+
+[Install]
+WantedBy=multi-user.target

@@ -73,14 +73,42 @@ RUN apt-get update && \
     && /usr/local/sbin/install-desktop "$DESKTOP"
 
 # 可选：压缩工具与 Docker（容器内由 Droidspaces 提供网络与 GPU 节点）。
-# trixie 把 docker CLI 拆成了独立的 docker-cli（docker.io 只留 dockerd），
-# 26.1.5 这一版不构成 Breaks，可以和服务端一起装。
 RUN if [ "$ENABLE_zip_ARG" = "true" ]; then \
         apt-get install -y --no-install-recommends 7zip unzip bzip2; \
-    fi && \
-    if [ "$ENABLE_docker_ARG" = "true" ]; then \
+    fi
+
+# Docker：trixie 自带的 docker.io 冻结在 26.1.5，官方仓库有 arm64/trixie 的 29.x。
+# DOCKER_SOURCE=debian 可退回发行版包；DOCKER_VERSION / CONTAINERD_VERSION 留空装
+# 候选版本，指定版本号可钉住（4.19 上若新版 containerd 有问题就钉回 1.7.x）。
+ARG DOCKER_SOURCE=ce
+ARG DOCKER_CHANNEL=stable
+ARG DOCKER_VERSION=
+ARG CONTAINERD_VERSION=
+RUN if [ "$ENABLE_docker_ARG" = "true" ] && [ "$DOCKER_SOURCE" = "ce" ]; then \
+        install -d -m 0755 /etc/apt/keyrings && \
+        curl -fsSL https://download.docker.com/linux/debian/gpg -o /etc/apt/keyrings/docker.asc && \
+        chmod a+r /etc/apt/keyrings/docker.asc && \
+        printf 'Types: deb\nURIs: https://download.docker.com/linux/debian\nSuites: trixie\nComponents: %s\nArchitectures: arm64\nSigned-By: /etc/apt/keyrings/docker.asc\n' "$DOCKER_CHANNEL" \
+            > /etc/apt/sources.list.d/docker.sources && \
+        apt-get update && \
+        apt-get install -y --no-install-recommends \
+            "docker-ce${DOCKER_VERSION:+=$DOCKER_VERSION}" \
+            "docker-ce-cli${DOCKER_VERSION:+=$DOCKER_VERSION}" \
+            "containerd.io${CONTAINERD_VERSION:+=$CONTAINERD_VERSION}" \
+            docker-buildx-plugin docker-compose-plugin && \
+        { update-alternatives --set iptables /usr/sbin/iptables-legacy 2>/dev/null || true; }; \
+    elif [ "$ENABLE_docker_ARG" = "true" ]; then \
         apt-get install -y --no-install-recommends docker.io docker-cli docker-buildx docker-compose && \
         { update-alternatives --set iptables /usr/sbin/iptables-legacy 2>/dev/null || true; }; \
+    fi
+
+# 记录容器运行时版本，并确保开机自启（官方包不会自己 enable）。
+RUN if [ "$ENABLE_docker_ARG" = "true" ]; then \
+        systemctl enable docker containerd >/dev/null 2>&1 || true; \
+        printf 'docker=%s\ncontainerd=%s\n' \
+            "$(dpkg-query -W -f='${Version}' docker-ce 2>/dev/null || dpkg-query -W -f='${Version}' docker.io 2>/dev/null || echo unknown)" \
+            "$(dpkg-query -W -f='${Version}' containerd.io 2>/dev/null || echo none)" \
+            >> /etc/droidspaces-kde-stack; \
     fi
 
 # 容器内不需要真正的 X 服务器进程，但 X11 客户端工具（xauth/xrdb/xset/xrandr）要在。
@@ -331,7 +359,7 @@ COPY rootfs/ /
 # 这里只启用网络与首次启动相关的单元；Anland 专用单元一并清掉。
 RUN chmod +x /usr/local/bin/ds-nat6-up.sh /usr/local/sbin/dagu-firstboot \
         /usr/local/bin/droidspaces-x11-bridge && \
-    systemctl enable ds-nat6 dagu-firstboot droidspaces-x11-bridge
+    systemctl enable ds-nat6 dagu-firstboot droidspaces-x11-bridge droidspaces-x11-watch.path
 
 RUN systemctl disable getty@tty1 2>/dev/null || true
 
