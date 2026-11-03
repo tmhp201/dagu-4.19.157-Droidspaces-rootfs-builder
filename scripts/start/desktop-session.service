@@ -10,10 +10,11 @@ Type=simple
 User=1000
 PAMName=login
 EnvironmentFile=-/etc/environment
-# x11 后端必须有 socket 才起会话，否则单元会一直 Restart 循环。开机时
-# Termux:X11 往往还没启动，所以这里不负责等待：droidspaces-x11-watch.path
-# 盯着 /tmp/.X11-unix/X5，socket 一出现就再次 start 本单元。
-ExecCondition=/bin/sh -c 'grep -q "^DISPLAY_BACKEND=x11" /etc/droidspaces-desktop.conf 2>/dev/null || exit 0; grep -q "enable_x11=1" /run/droidspaces/container.config 2>/dev/null || ls /tmp/.X11-unix/X* >/dev/null 2>&1'
+# 只按后端过滤：非 x11 后端不归本单元管。socket 是否就绪不在这里判断——开机时
+# Termux:X11 往往还没起来，用条件判断会把「还没到」当成「不需要」，单元被判
+# exec-condition 后不会再试。等待交给 start-desktop-session（15 秒），迟到的
+# socket 由 droidspaces-x11-watch.path 再拉起一次。
+ExecCondition=/bin/sh -c 'grep -q "^DISPLAY_BACKEND=x11" /etc/droidspaces-desktop.conf 2>/dev/null'
 # 桥接脚本可重复执行：开机时 Termux:X11 尚未启动则由这里补挂。Anland 模板没有
 # 这个脚本，前缀 - 让缺失或失败都不影响会话启动。
 ExecStartPre=-+/usr/local/bin/droidspaces-x11-bridge

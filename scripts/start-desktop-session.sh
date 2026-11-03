@@ -8,8 +8,9 @@ source "$config"
 case "${DESKTOP:-}:${DISPLAY_BACKEND:-}" in
     none:x11) command_line='exit 0' ;;
     # X11 的 X 服务器由 Termux:X11 提供：容器里只有 socket，没有 Xorg。
-    # 启动前等 socket 就绪（最多 15 秒）；等不到就退出，由 path 单元在
-    # socket 出现后重新拉起本会话。
+    # 启动前等 socket 就绪（最多 15 秒）；等不到按成功退出，由 path 单元在
+    # socket 出现后重新拉起。以失败退出会撞上 StartLimit，之后 path 触发的
+    # start 会被拒绝。
     kde:x11)
         command_line='export DISPLAY="${DISPLAY:-:5}"
 x11_display="${DISPLAY#*:}"
@@ -19,7 +20,10 @@ for _ in $(seq 1 150); do
     [[ -S "$x11_socket" ]] && break
     sleep 0.1
 done
-[[ -S "$x11_socket" ]] || { echo "等待 X11 socket 超时：$x11_socket（Termux:X11 没起来，或 :5 被重复启动后 socket 文件被删）" >&2; exit 1; }
+if [[ ! -S "$x11_socket" ]]; then
+    echo "X11 socket 尚未出现：$x11_socket（Termux:X11 没启动，或 :5 被重复启动后 socket 文件被删）" >&2
+    exit 0
+fi
 echo "--> [x11] $DISPLAY"
 exec startplasma-x11'
         ;;

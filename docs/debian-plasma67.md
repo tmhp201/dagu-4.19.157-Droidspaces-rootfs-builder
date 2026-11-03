@@ -111,9 +111,9 @@ droidspaces --name=kde --rootfs-img=dagu-kde.img --init=/sbin/init \
 systemctl restart desktop-session
 ```
 
-`desktop-session.service` 的 `ExecCondition` 认两种情况：`container.config` 里 `enable_x11=1`，或者 `/tmp/.X11-unix/X*` 已存在。开机时 Termux:X11 通常还没启动，条件不满足会被跳过（`inactive (dead) (Result: exec-condition)`）；`droidspaces-x11-watch.path` 监视 `/tmp/.X11-unix/X5`，文件一出现就再次 start 该单元，所以不需要手工介入。会话脚本自己最多等 15 秒，超时就退出并把原因写进 journal。
+`desktop-session.service` 的 `ExecCondition` 只判断后端是不是 x11。socket 就绪与否不参与判断：开机时 Termux:X11 通常还没启动，把「还没到」当成「不需要启动」会让单元被判 `exec-condition` 之后不再重试。会话脚本自己最多等 15 秒，等不到按成功退出并把原因写进 journal；`droidspaces-x11-watch.path` 监视 `/tmp/.X11-unix/X5`，文件一出现就再次 start 该单元，所以不需要手工介入。按成功退出而不是失败退出，是为了避免撞上 `StartLimitBurst` 之后 path 触发的 start 被拒绝。
 
-顺序不能反：`-B` 在启动时就把源目录挂进来，先起容器再起 X 服务器会挂到空目录。没有图形界面时可以用 loader 手工起服务器（显示号固定 `:5`）：
+顺序不能反：`-B` 在启动时就把源目录挂进来，先起容器再起 X 服务器会挂到空目录。显示号 `:5` 每次开机只能启动一次；在已有服务器的情况下再执行 `termux-x11 :5`，会先删掉 `X5` 再 bind 失败，文件消失后容器里一直是空目录。没有图形界面时可以用 loader 手工起服务器（显示号固定 `:5`）：
 
 ```sh
 su -c 'T=/data/data/com.termux/files/usr; CLASSPATH=$T/libexec/termux-x11/loader.apk \

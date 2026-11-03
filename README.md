@@ -63,6 +63,7 @@ Mesa 不用发行版包：构建时调用 `scripts/tui/install-mesa.sh --1`，�
 | `/etc/systemd/system/*.d/99-netmode-limit.conf` | `ExecCondition` 检查 `net_mode=(nat\|gateway)` | 非 NAT 模式不起网络单元 |
 | `/etc/systemd/system/*.d/99-hwaccess-limit.conf` | `ExecCondition` 检查 `enable_hw_access=1` | 没开硬件访问就不起 udev |
 | `/etc/logrotate.conf` | `maxsize 50M` | 容器长期运行时的日志上限 |
+| `/etc/tmpfiles.d/x11.conf` | `d /tmp/.X11-unix 1777 root root -`，覆盖 `D!` | 该目录是宿主 `$TMPDIR/.X11-unix` 的 bind 挂载，开机清空会删掉活着的 X5 |
 | `/etc/ssh/sshd_config` | `PermitRootLogin no`，`PasswordAuthentication yes` | 只允许 `dagu` 登录 |
 | `/etc/chromium.d/droidspaces` | `--password-store=basic --hide-crash-restore-bubble --autoplay-policy=no-user-gesture-required` | 免密钥环弹窗、免崩溃恢复气泡、自动播放带声音 |
 | `/etc/passwd`、`/etc/group`、`/etc/adduser.conf` | 建 `aid_inet:3003` `aid_net_raw:3004` `aid_net_admin:3005` `droidspaces-gpu:786`，`dagu` 加入 `sudo input video tty aid_inet aid_net_raw droidspaces-gpu` | Android 侧的 AID 与 GPU 节点属组 |
@@ -154,16 +155,21 @@ su -c "droidspaces --name=deb13 --hostname=deb13 \
 
 ## 4. 首次启动
 
-1. **先开 X 服务器**。在 Termux 里执行，并确认 socket 文件出现：
+显示号 `:5` 每次开机只能启动一次，并且要在容器启动之前起来。容器挂的是宿主 `$TMPDIR/.X11-unix` 这个目录，目录里没有 `X5` 时桥接挂进来也是空的，会话不会被拉起。
+
+1. **在 Termux 里启动 X 服务器**，只启动一次，并确认 socket 文件出现：
 
 ```sh
 termux-x11 :5 &
+sleep 2
 ls -l "$TMPDIR/.X11-unix"      # 要能看到 srwxrwxrwx X5
 ```
 
-2. 打开 Termux:X11 应用，让它进入自己的画面（黑屏也是正常，等桌面）。
-3. 启动容器（Droidspaces 卡片，或 3.3 的命令）。
+2. **启动容器**（Droidspaces 卡片，或 3.3 的命令）。
+3. **最后打开 Termux:X11 应用**当显示器。服务器已经在跑，应用只连上去显示画面；此时不要再执行 `termux-x11 :5`，第二次启动会先删掉 `X5` 再 bind 失败，文件消失后容器里一直是空目录。
 4. 等 10–30 秒，Termux:X11 窗口里出现壁纸与底部面板。
+
+反过来把应用放在最前面也能用：应用会自己把 `:5` 拉起来，那就跳过第 1 步，不要再执行命令。
 
 容器内依次发生：
 
@@ -219,7 +225,7 @@ sudo systemctl start desktop-session
 systemctl status desktop-session --no-pager | head -5
 ```
 
-如果 `termux-x11 :5` 报 `Cannot establish any listening sockets` / `server already running`，说明显示号 `:5` 被占：`pgrep -af termux-x11` 找到旧进程并 `kill -9`，再启动一次。
+如果 `termux-x11 :5` 报 `Cannot establish any listening sockets` / `server already running`，说明显示号 `:5` 被占：`pgrep -af termux-x11` 找到旧进程并 `kill -9`，再启动一次。打开 Termux:X11 应用本身不会再启动服务器；`X5` 在打开应用之后消失，说明这次开机里 `:5` 被启动了第二次。
 
 ### 5.4 浏览、音频、网络
 
@@ -272,7 +278,7 @@ docker version --format '{{.Server.Version}}'  # 29.9.2
 | 症状 | 原因与处理 |
 | --- | --- |
 | 桌面不出现，`/tmp/.X11-unix` 为空 | Termux:X11 的 socket 文件不存在或没挂进来。按 5.3 走一遍 |
-| `desktop-session` 显示 `inactive (dead) (Result: exec-condition)` | 启动时 socket 还不存在。`droidspaces-x11-watch.path` 会在 X5 出现后自动再拉起；也可先跑桥接再 `systemctl start desktop-session` |
+| `desktop-session` 日志里是「X11 socket 尚未出现」 | 会话已按成功退出，`droidspaces-x11-watch.path` 会在 X5 出现后自动再拉起；先确认宿主 `$TMPDIR/.X11-unix` 里有 X5 |
 | `termux-x11` 报 `server already running` | 显示号被旧进程占着：`pgrep -af termux-x11` → `kill -9` → 重启 |
 | 有画面没声音 | 播放器被自动静音（点喇叭）；或 Termux 的 `default.pa` 没修补（见 5.4） |
 | `pactl` 报 `Connection refused` | pulseaudio 重启后 socket inode 变了，容器里挂的还是旧的。用 `PULSE_SERVER=unix:/mnt/termux/.pulse-socket`，或重启容器 |
