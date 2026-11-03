@@ -25,7 +25,7 @@ ARG ENABLE_zip_ARG=true
 ARG ENABLE_docker_ARG=true
 ARG ENABLE_mesa_ARG=true
 ARG ENABLE_systemd257_ARG=true
-ARG ENABLE_binfmt_ARG=false
+ARG ENABLE_binfmt_ARG=true
 ARG ENABLE_yj_ARG=false
 ARG USERNAME=dagu
 ARG KDE_UNSTABLE_BASE=https://deb.debian.org/debian
@@ -62,13 +62,17 @@ RUN chmod +x /usr/local/sbin/install-desktop /usr/local/sbin/configure-desktop \
 # libllvm19 是 Mesa-for-Android（26.3.0-devel）的硬依赖：缺它 libEGL_mesa 无法
 # 加载，GLX/EGL 全部退化，kwin 与 Qt Quick 都起不来。trixie 自带这个版本，
 # 由 sid 引入的 libllvm22 不会被卸载。
+# 与官方 base 一致：先在 trixie 内升到构建时的最新版，再装包。此时还没有加
+# unstable 源，这一步只会更新 trixie/trixie-updates，不会触发跨套件升级。
 RUN apt-get update && \
+    apt-get upgrade -y && \
     apt-get install -y --no-install-recommends \
     bash ca-certificates curl wget jq locales tzdata \
     systemd-sysv systemd-resolved dbus dbus-user-session udev kmod libpam-systemd \
     sudo openssh-server net-tools iproute2 iputils-ping iptables bind9-dnsutils \
     procps psmisc util-linux file findutils grep sed gawk \
     tar gzip xz-utils unzip zip bash-completion less git nano \
+    vim htop lsof pciutils dialog logrotate \
     libllvm19 \
     && /usr/local/sbin/install-desktop "$DESKTOP"
 
@@ -109,6 +113,20 @@ RUN if [ "$ENABLE_docker_ARG" = "true" ]; then \
             "$(dpkg-query -W -f='${Version}' docker-ce 2>/dev/null || dpkg-query -W -f='${Version}' docker.io 2>/dev/null || echo unknown)" \
             "$(dpkg-query -W -f='${Version}' containerd.io 2>/dev/null || echo none)" \
             >> /etc/droidspaces-kde-stack; \
+    fi
+
+# amd64 兼容：binfmt-support 注册 qemu-user-static 的解释器，x86_64 的静态二进制
+# 可以直接在容器里跑。动态链接的 amd64 程序另外还需要 libc6:amd64；本镜像的 glibc
+# 已经被 KDE 6.7 栈升到 2.43，amd64 侧只能从同版本源取，因此不装。
+COPY scripts/binfmt/qemu-binfmt-register.sh /usr/local/bin/
+COPY scripts/binfmt/qemu-binfmt-register.service /etc/systemd/system/
+RUN if [ "$ENABLE_binfmt_ARG" = "true" ]; then \
+        chmod +x /usr/local/bin/qemu-binfmt-register.sh && \
+        chmod 644 /etc/systemd/system/qemu-binfmt-register.service && \
+        ln -sf /etc/systemd/system/qemu-binfmt-register.service /etc/systemd/system/multi-user.target.wants/qemu-binfmt-register.service && \
+        apt-get install -y qemu-user-static binfmt-support; \
+    else \
+        rm -f /usr/local/bin/qemu-binfmt-register.sh /etc/systemd/system/qemu-binfmt-register.service; \
     fi
 
 # 容器内不需要真正的 X 服务器进程，但 X11 客户端工具（xauth/xrdb/xset/xrandr）要在。

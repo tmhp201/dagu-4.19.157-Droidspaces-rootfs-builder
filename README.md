@@ -17,7 +17,7 @@
 
 ## 1. 对 Debian 13 基础镜像做了什么
 
-基础镜像是 `debian:trixie`（未装任何桌面）。下面三张表分别是加进去的包、改过的系统文件、启用的单元。
+基础镜像是 `debian:trixie`（未装任何桌面）。构建开头先 `apt-get update && apt-get upgrade -y`，把 trixie 与 trixie-updates 升到构建时的最新版，然后再装下面的包；此时还没有加 unstable 源，不会出现跨套件升级。三张表分别是加进去的包、改过的系统文件、启用的单元。
 
 ### 1.1 安装的软件包
 
@@ -25,7 +25,7 @@
 | --- | --- |
 | 基础运行时 | `bash` `ca-certificates` `curl` `wget` `jq` `locales` `tzdata` `systemd-sysv` `systemd-resolved` `dbus` `dbus-user-session` `udev` `kmod` `libpam-systemd` `sudo` `openssh-server` |
 | 网络工具 | `net-tools` `iproute2` `iputils-ping` `iptables` `bind9-dnsutils` |
-| 常用工具 | `procps` `psmisc` `util-linux` `file` `findutils` `grep` `sed` `gawk` `tar` `gzip` `xz-utils` `unzip` `zip` `bash-completion` `less` `git` `nano` |
+| 常用工具 | `procps` `psmisc` `util-linux` `file` `findutils` `grep` `sed` `gawk` `tar` `gzip` `xz-utils` `unzip` `zip` `bash-completion` `less` `git` `nano` `vim` `htop` `lsof` `pciutils` `dialog` `logrotate` |
 | 压缩 | `7zip` `unzip` `bzip2` |
 | 图形依赖 | `libllvm19`（Mesa-for-Android 的 `libEGL_mesa` 链接 `libLLVM.so.19.1`，缺它 GLX/EGL 全部不可用） |
 | 桌面（Plasma 6.7 栈） | `plasma-desktop` `plasma-desktop-data` `plasma-workspace` `kwin-x11` `plasma-pa` `kscreen` `powerdevil` `systemsettings` `kinfocenter` `plasma-systemmonitor` `kde-config-screenlocker` `kio-extras` `xdg-desktop-portal-kde` `kde-cli-tools` `polkit-kde-agent-1` `libpam-kwallet5` |
@@ -35,7 +35,10 @@
 | 音频 | `pipewire` `pipewire-alsa` `pipewire-pulse` `wireplumber` `libcanberra-pulse` `pulseaudio-utils` `alsa-utils` `gstreamer1.0-plugins-base` `gstreamer1.0-plugins-good` `sound-theme-freedesktop` |
 | 图形验证 | `mesa-utils` `vulkan-tools` `clinfo` `glmark2` `vkmark` `dmidecode` `libdisplay-info-bin` `wayland-utils` `aha` `upower` `xdg-user-dirs` |
 | 浏览器 | `chromium` `chromium-sandbox` `scrot` |
+| amd64 兼容 | `qemu-user-static` `binfmt-support`（注册 binfmt 处理器，静态 x86_64 二进制可直接运行；动态程序还需要 amd64 的 `libc6`，见下） |
 | 容器 | `docker-ce` `docker-ce-cli` `containerd.io` `docker-buildx-plugin` `docker-compose-plugin`（Docker 官方仓库，非 trixie 的 26.1.5） |
+
+amd64 兼容只到解释器层面：`qemu-user-static` 提供处理器，`binfmt-support` 负责注册，静态 x86_64 二进制可以直接运行。动态链接的 amd64 程序还需要 amd64 的 `libc6`，而镜像的 glibc 已被 KDE 6.7 栈升到 2.43，trixie 的 amd64 `libc6` 只有 2.41，两个架构的 `libc6` 必须同版本，因此没有装；`ENABLE_binfmt_ARG=false` 可以整套关掉。
 
 Mesa 不用发行版包：构建时调用 `scripts/tui/install-mesa.sh --1`，从 `Goldzxcbug/droidspaces-package` 的 `mesa-for-android-container` 取 `debian_trixie_arm64` 的 arm64 包（26.3.0-devel），并在 `/etc/apt/preferences.d/hold-anland-package` 里把 `libegl-mesa0 libgbm1 libgl1-mesa-dri libglx-mesa0 mesa-libgallium mesa-vulkan-drivers` 钉住，避免被 apt 换回发行版版本。
 
@@ -81,6 +84,7 @@ locale 默认 `zh_CN.UTF-8`，时区 `Asia/Shanghai`（`ENABLE_ZH_TZ=false` 时�
 | `dbus` | 系统总线 |
 | `ssh` | 可选，`dagu` 密码登录 |
 | `docker` `containerd` | 容器运行时 |
+| `qemu-binfmt-register.service` | 挂载 `binfmt_misc` 并确认 qemu 处理器已注册，让 amd64 二进制可直接执行 |
 
 `getty@tty1` 关闭；Anland 专用单元（`anland-session.service`、`/usr/local/bin/start-anland-session`）在打包前删除。
 

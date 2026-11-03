@@ -177,6 +177,7 @@ su -c "cat /run/droidspaces/containers/kde/container.config" | grep -E "enable_x
 | 浏览器 | Microsoft Edge 没有 Linux/arm64 版本，`packages.microsoft.com` 的 `binary-arm64` 索引为空 | 镜像内置 Chromium 与 `chromium-sandbox` |
 | 容器网络 | Droidspaces `--net=nat` 依赖容器内 DHCP 客户端；`systemd-networkd` 被屏蔽时 eth0 拿不到地址、DNS 全失效 | 镜像已保留 networkd/resolved，只屏蔽 udevd 与 NetworkManager |
 | Plasma 6.8 | 上游去掉 X11 会话，本方案停在 6.7.x 不再上移 | 无：再往上必须转 Wayland |
+| amd64 动态程序 | 装了 `qemu-user-static` 与 `binfmt-support`，静态 x86_64 二进制可执行；动态程序缺 amd64 的 `libc6`（glibc 2.43 与 trixie 的 2.41 无法并存） | 只用静态二进制，或另行从 unstable 取同版本 `libc6:amd64` |
 | Mesa 版本 | `install-mesa` 装的是预编译 arm64 包，版本跟随上游发布 | `install-mesa --uninstall` 回到发行版 Mesa（kgsl 不可用） |
 
 ## 复现依赖解析
