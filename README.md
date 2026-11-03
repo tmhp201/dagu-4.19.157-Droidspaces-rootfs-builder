@@ -1,302 +1,344 @@
-# Dagu Droidspaces RootFS
+# Dagu KDE rootfs（Debian 13）
 
-为小米平板 5 Pro 12.4（`dagu`，内核 `4.19.157`）准备的 Droidspaces 根文件系统，两条产线：
+小米平板 5 Pro 12.4（`dagu`，SM8250，内核 `4.19.157`）上跑的 Droidspaces 根文件系统：Debian 13 + Plasma 6.7，画面经 Termux:X11 输出，渲染走 Mesa 的 kgsl 后端。
 
-| 模板 | 发行版 | 桌面 | 显示 |
+本分支只产出一个模板 `Dagu-KDE`。
+
+| 项目 | 内容 |
+| --- | --- |
+| 发行版 | Debian 13（trixie），arm64 |
+| 桌面 | KDE Plasma 4:6.7.4-2 / KDE Frameworks 6.30.0 / Qt 6.11.2，X11 会话 |
+| 显示 | Termux:X11，`DISPLAY=:5`，socket `/tmp/.X11-unix/X5` |
+| 渲染 | Mesa 26.3.0（`MESA_LOADER_DRIVER_OVERRIDE=kgsl`），Adreno 650 / freedreno |
+| init | systemd 257.13（4.19 内核上验证过的版本） |
+| 容器 | Docker 29.9.2 + buildx 0.38.1 + compose 5.7.0（官方仓库），overlay2 |
+| 浏览器 | Chromium 156（自动播放带声音、免密码服务弹窗） |
+| 用户 | `dagu` / `1234`，`sudo` 免密 |
+
+## 1. 对 Debian 13 基础镜像做了什么
+
+基础镜像是 `debian:trixie`（未装任何桌面）。下面三张表分别是加进去的包、改过的系统文件、启用的单元。
+
+### 1.1 安装的软件包
+
+| 类别 | 包 |
+| --- | --- |
+| 基础运行时 | `bash` `ca-certificates` `curl` `wget` `jq` `locales` `tzdata` `systemd-sysv` `systemd-resolved` `dbus` `dbus-user-session` `udev` `kmod` `libpam-systemd` `sudo` `openssh-server` |
+| 网络工具 | `net-tools` `iproute2` `iputils-ping` `iptables` `bind9-dnsutils` |
+| 常用工具 | `procps` `psmisc` `util-linux` `file` `findutils` `grep` `sed` `gawk` `tar` `gzip` `xz-utils` `unzip` `zip` `bash-completion` `less` `git` `nano` |
+| 压缩 | `7zip` `unzip` `bzip2` |
+| 图形依赖 | `libllvm19`（Mesa-for-Android 的 `libEGL_mesa` 链接 `libLLVM.so.19.1`，缺它 GLX/EGL 全部不可用） |
+| 桌面（Plasma 6.7 栈） | `plasma-desktop` `plasma-desktop-data` `plasma-workspace` `kwin-x11` `plasma-pa` `kscreen` `powerdevil` `systemsettings` `kinfocenter` `plasma-systemmonitor` `kde-config-screenlocker` `kio-extras` `xdg-desktop-portal-kde` `kde-cli-tools` `polkit-kde-agent-1` `libpam-kwallet5` |
+| 桌面（应用） | `ark` `konsole` `dolphin` `kate` `kfind` `filelight` `dolphin-plugins` `ffmpegthumbs` `kdegraphics-thumbnailers` `kimageformat6-plugins` `breeze` `breeze-icon-theme` `desktop-base` `webext-plasma-browser-integration` |
+| 字体与翻译 | `fonts-noto-cjk` `fonts-noto-color-emoji` `qt6-translations-l10n` |
+| 显示与 X11 | `xserver-xorg` `x11-xserver-utils` `x11-utils` `xauth` `xkb-data` `libxcb-cursor0` |
+| 音频 | `pipewire` `pipewire-alsa` `pipewire-pulse` `wireplumber` `libcanberra-pulse` `pulseaudio-utils` `alsa-utils` `gstreamer1.0-plugins-base` `gstreamer1.0-plugins-good` `sound-theme-freedesktop` |
+| 图形验证 | `mesa-utils` `vulkan-tools` `clinfo` `glmark2` `vkmark` `dmidecode` `libdisplay-info-bin` `wayland-utils` `aha` `upower` `xdg-user-dirs` |
+| 浏览器 | `chromium` `chromium-sandbox` `scrot` |
+| 容器 | `docker-ce` `docker-ce-cli` `containerd.io` `docker-buildx-plugin` `docker-compose-plugin`（Docker 官方仓库，非 trixie 的 26.1.5） |
+
+Mesa 不用发行版包：构建时调用 `scripts/tui/install-mesa.sh --1`，从 `Goldzxcbug/droidspaces-package` 的 `mesa-for-android-container` 取 `debian_trixie_arm64` 的 arm64 包（26.3.0-devel），并在 `/etc/apt/preferences.d/hold-anland-package` 里把 `libegl-mesa0 libgbm1 libgl1-mesa-dri libglx-mesa0 mesa-libgallium mesa-vulkan-drivers` 钉住，避免被 apt 换回发行版版本。
+
+### 1.2 改过的系统文件
+
+| 文件 | 改成了什么 | 原因 |
+| --- | --- | --- |
+| `/etc/apt/apt.conf.d/99parallel-downloads` | 并行连接、pipeline 深度 10、重试 3 次 | 缩短 CI 构建时间 |
+| `/etc/apt/sources.list.d/20-droidspaces-unstable.sources` | 构建期临时加 unstable，装完删除 | 6.7 只能从 unstable 取 |
+| `/etc/apt/preferences.d/10-droidspaces-unstable.pref` | 构建期把 `systemd` `udev` `dbus` `init-system-helpers` `kmod` 按精确版本钉在 trixie，装完删除 | 4.19 只验证过 systemd 257，被升到 262 就起不来 |
+| `/etc/environment` | `MESA_LOADER_DRIVER_OVERRIDE=kgsl` `TU_DEBUG=noconform` `PULSE_SERVER=unix:/tmp/.pulse-socket` `DISPLAY=:5` `XCURSOR_SIZE=48` `XDG_SESSION_CLASS=user` | 4.19 没有 `msm` DRM，kgsl 是唯一的硬件 GL 路径 |
+| `/etc/droidspaces-desktop.conf` | `DISPLAY_BACKEND=x11` | `start-desktop-session` 据此选择 `startplasma-x11` |
+| `~/.config/kwinrc` | `[Compositing] Enabled=false` | kwin 的 OpenGL 合成在 kgsl 上采样窗口内容得到全黑 |
+| `~/.config/kscreenlockerrc` | `Autolock=false` `LockOnStart=false` | 没有虚拟终端可以执行 `loginctl unlock`，锁屏一失败就是一块黑板 |
+| `/home/dagu/.bashrc` | 追加 `XDG_RUNTIME_DIR=/run/user/$(id -u)` | 容器里没有 pam_systemd 自动设置 |
+| `/etc/systemd/network/10-droidspaces.network` | `DHCP=yes` `IPv6AcceptRA=no` `KeepConfiguration=yes` | networkd 257 用 nexthop 对象下发 IPv6 RA 路由，4.19 不支持 |
+| `/etc/systemd/network/20-droidspaces-mtu.network` | `MTUBytes=1400` | NAT 路径 MTU 不足 1500，1500 下下载会卡在 0 字节 |
+| `/etc/systemd/journald.conf` + `journald.conf.d/ds-logging.conf` | `ReadKMsg=no` `Audit=no` `Storage=volatile`，上限 200M / 7 天 | 容器没有内核日志与审计权限 |
+| `/etc/systemd/logind.conf.d/99-power-key.conf` | 电源键、休眠键全部 `ignore` | 避免容器内 logind 抢宿主按键 |
+| `/etc/systemd/system/systemd-udev-*.d/99-readonly-fix.conf` | `ConditionPathIsReadWrite=` | 容器 `/sys` 只读，不覆盖会起不来 |
+| `/etc/systemd/system/systemd-udev-trigger.service.d/override.conf` | `udevadm trigger` 只扫 `usb block input tty net` | 全量 trigger 在容器里没有意义且很慢 |
+| `/etc/systemd/system/*.d/99-netmode-limit.conf` | `ExecCondition` 检查 `net_mode=(nat\|gateway)` | 非 NAT 模式不起网络单元 |
+| `/etc/systemd/system/*.d/99-hwaccess-limit.conf` | `ExecCondition` 检查 `enable_hw_access=1` | 没开硬件访问就不起 udev |
+| `/etc/logrotate.conf` | `maxsize 50M` | 容器长期运行时的日志上限 |
+| `/etc/ssh/sshd_config` | `PermitRootLogin no`，`PasswordAuthentication yes` | 只允许 `dagu` 登录 |
+| `/etc/chromium.d/droidspaces` | `--password-store=basic --hide-crash-restore-bubble --autoplay-policy=no-user-gesture-required` | 免密钥环弹窗、免崩溃恢复气泡、自动播放带声音 |
+| `/etc/passwd`、`/etc/group`、`/etc/adduser.conf` | 建 `aid_inet:3003` `aid_net_raw:3004` `aid_net_admin:3005` `droidspaces-gpu:786`，`dagu` 加入 `sudo input video tty aid_inet aid_net_raw droidspaces-gpu` | Android 侧的 AID 与 GPU 节点属组 |
+| `/etc/droidspaces` | 写入构建时间戳 | 标记解包后修复已执行 |
+| `/etc/droidspaces-kde-stack` | 记录 `stack` `plasma` `qt` `glibc` `systemd` `systemd-verified` | 排查时一眼看到装的是哪套栈 |
+
+locale 默认 `zh_CN.UTF-8`，时区 `Asia/Shanghai`（`ENABLE_ZH_TZ=false` 时切回 `en_US.UTF-8`）。
+
+### 1.3 启用的单元
+
+| 单元 | 作用 |
+| --- | --- |
+| `desktop-session.service` | 以 `dagu` 身份执行 `start-desktop-session` → `startplasma-x11`，`User=1000`、`PAMName=login`、失败自动重启 |
+| `droidspaces-x11-watch.path` | 盯着 `/tmp/.X11-unix/X5`，socket 出现就拉起 `desktop-session.service` |
+| `droidspaces-x11-bridge.service` | 把 `/mnt/termux/.X11-unix` 挂到 `/tmp/.X11-unix`，让容器看见宿主 Termux:X11 的 socket（挂目录，X 服务器晚启动也立刻可见） |
+| `ds-nat6.service` | 从 DHCPv4 地址派生 `fd64:7370::/48` 内的 IPv6 地址，探测通则保留默认路由 |
+| `dagu-firstboot.service` | 首次启动写 `machine-id`，重新 enable 需要按实例生成的单元 |
+| `systemd-networkd` `systemd-resolved` | NAT 模式下向 Droidspaces 的宿主 DHCP 要地址、做 DNS |
+| `dbus` | 系统总线 |
+| `ssh` | 可选，`dagu` 密码登录 |
+| `docker` `containerd` | 容器运行时 |
+
+`getty@tty1` 关闭；Anland 专用单元（`anland-session.service`、`/usr/local/bin/start-anland-session`）在打包前删除。
+
+### 1.4 与 trixie 的版本偏离
+
+| 组件 | 镜像内 | trixie 原生 | 说明 |
 | --- | --- | --- | --- |
-| `Dagu-Anland` | Ubuntu 26.04 LTS | Plasma 6 + Anland 补丁版 KWin | Anland Wayland（`wayland-anland`） |
-| `Dagu-KDE` | Debian 13 | Plasma 6.7 | Termux:X11（`DISPLAY=:5`），Mesa/kgsl 渲染 |
+| Plasma | `4:6.7.4-2` | `4:6.3.6-2` | 6.7 是最后一个带 X11 会话的 Plasma |
+| KDE Frameworks | `6.30.0` | `6.13` | 6.7 栈要求 KF ≥ 6.26 |
+| Qt | `6.11.2+dfsg-7` | `6.8.2` | 6.7 栈要求 Qt 6.11.2（私有 ABI 精确匹配） |
+| glibc | `2.43-7` | `2.41-12` | sid 的 Qt 6.11.2 依赖 `libc6 (>= 2.43)` |
+| libstdc++6 / libgcc-s1 / libpcre2 / libexpat / zlib | 随之上移 | — | 与 glibc 一起被拉起的 18 个基础包 |
+| systemd / udev / dbus | `257.13-1~deb13u1` / `1.16.2-2` | 同 | 钉死在 trixie |
 
-下面的章节以 `Dagu-Anland` 为主线；Debian 模板的差异见 [Debian 13 / Plasma 6.7](#debian-13--plasma-67)。
+这是 Debian 不支持的混装：装完即摘掉 unstable 源，容器里只面对 trixie，`apt upgrade` 不会触发 partial upgrade。依赖解析过程见 [docs/debian-plasma67.md](docs/debian-plasma67.md)。
 
-## 为什么需要这个 rootfs
+## 2. 设备侧前提
 
-这台设备的内核是 4.19，厂商关闭了 `CONFIG_USER_NS`、`CONFIG_SYSVIPC`、`CONFIG_POSIX_MQUEUE`、`CONFIG_IP6_NF_NAT`、`CONFIG_MACVLAN`。这些能力由 [droidspaces-dagu-kpm](https://github.com/univers629/droidspaces-dagu-kpm) 在运行时补上；rootfs 这一侧还要处理：
+1. **内核补丁**：这台机器的 4.19 内核关闭了 `CONFIG_USER_NS`、`CONFIG_SYSVIPC`、`CONFIG_POSIX_MQUEUE`、`CONFIG_IP6_NF_NAT`、`CONFIG_MACVLAN`，需要按 [droidspaces-dagu-kpm](https://github.com/univers629/droidspaces-dagu-kpm) 的说明刷入 KPM。
+2. **Termux + Termux:X11**：Termux 提供 `pulseaudio` 与 Termux:X11 的 loader；Termux:X11 应用负责把画面显示出来。两者都要放行后台运行，不要被系统冻结。
+3. **ADB**（可选）：命令行建容器、`adb push` 大文件时用。
 
-| 问题 | 处理方式 |
-| --- | --- |
-| Ubuntu 26.04 自带的 systemd 259 需要新内核接口 | 镜像内改用发行版打包的 systemd 257 包族，状态目录 `/etc/droidspaces-systemd257` |
-| systemd-networkd 257 用 nexthop 对象下发 IPv6 RA 路由，4.19 不支持 | 关闭 `IPv6AcceptRA`、开启 `KeepConfiguration`，由 `ds-nat6.service` 自行派生 IPv6 地址 |
-| NAT 模式下容器没有可路由的 IPv6 | 从 DHCPv4 地址派生 `fd64:7370::/48` 内地址，网关 `fe80::1`；宿主没有全局 IPv6 时不保留默认路由 |
-| 容器内没有显示服务 | `anland-session.service` 以 `dagu` 身份启动 `anland-session`：连接 Anland daemon 的 Wayland socket，拉起 rootless Xwayland 与 `anland-miniwm` |
-| 容器内没有 logind，`/run/user/1000` 不会自动建立 | `tmpfiles.d` 与 unit 的 `ExecStartPre` 共同创建 |
+## 3. 安装
 
-## 镜像内容
+### 3.1 导入镜像
 
-| 组件 | 内容 |
-| --- | --- |
-| 发行版 | Ubuntu 26.04.1 LTS（`resolute`），arm64 |
-| init | systemd 257，含 `systemd-networkd`、`systemd-resolved` |
-| 桌面 | KDE Plasma 6：Anland 补丁版 KWin、Dolphin、Konsole、Kate |
-| 显示 | `anland-session`：Wayland socket、rootless Xwayland、`anland-miniwm` |
-| 网络 | `10-droidspaces.network` 走 DHCPv4 并保留地址；`ds-nat6.service` 派生 IPv6 |
-| 容器 | `docker.service`、`containerd.service`；`iptables` 切到 legacy 后端 |
-| 用户 | `dagu`（uid 1000，`sudo` 免密），附加组 `aid_inet`、`aid_net_raw`、`droidspaces-gpu` |
-| 浏览器 | Firefox |
+从本仓库 Release 下载 `Dagu-KDE-Droidspaces-rootfs-aarch64-<日期>-<版本>.tar.xz`，放到设备存储（约 790 MB）。打开 Droidspaces，**容器 → + → 从文件安装**，选中该文件。
 
-## 前置条件
+### 3.2 向导逐项取值
 
-**1. 刷入 KPM**。使用 [droidspaces-dagu-kpm](https://github.com/univers629/droidspaces-dagu-kpm) 的发布物，按其 README 刷入 `boot_a`。
+按向导里出现的顺序列全，未列出的项保持默认即可。
 
-**2. 安装 Anland 宿主组件**。从 [Anland Releases](https://github.com/SuperTurtleDev/anland/releases) 取 6.x 的 `anland-build.N.zip`：
+| # | 位置 | 项 | 取值 |
+| --- | --- | --- | --- |
+| 1 | 基本 | 容器名称 | `deb13`（自定，后面命令按这个名字写） |
+| 2 | 基本 | 主机名 | `deb13` |
+| 3 | 配置 · 网络 | 网络模式 | **NAT** |
+| 4 | 配置 · 网络 | DNS | `223.5.5.5,8.8.8.8` |
+| 5 | 配置 · 网络 | 禁用 IPv6 | **关**（关掉才走 `ds-nat6` 派生） |
+| 6 | 配置 · 集成与硬件 | GPU 访问 | **开** |
+| 7 | 配置 · 集成与硬件 | 硬件访问 | 关（不需要 udev 全量扫描） |
+| 8 | 配置 · 集成与硬件 | 配置 Termux:X11 | **关**（`--x11` 会让设备重启，见 5.3） |
+| 9 | 配置 · 集成与硬件 | 配置 PulseAudio | **开** |
+| 10 | 配置 · 集成与硬件 | Anland 显示 | 关 |
+| 11 | 配置 · 集成与硬件 | Android 存储 | 按需（开了会挂 `/sdcard`） |
+| 12 | 配置 · 安全与启动 | 允许沙箱 | **开** |
+| 13 | 配置 · 安全与启动 | 允许 VTS | 关 |
+| 14 | 配置 · 安全与启动 | SELinux 宽容 | 关 |
+| 15 | 配置 · 安全与启动 | 开机自启 | 关（Termux:X11 得先起来，容器自启没有意义） |
+| 16 | 配置 · 高级选项 | 绑定挂载点 | `/data/data/com.termux/files/usr/tmp:/mnt/termux` |
+| 17 | 配置 · 高级选项 | 指定 init | `/sbin/init` |
+| 18 | 配置 · 高级选项 | 内存 / CPU / PID 上限 | 留空 |
+| 19 | 存储 | 使用稀疏镜像 | **开**（`sudo` 需要 ext4 镜像；目录模式挂在 f2fs 上带 `nosuid`） |
+| 20 | 存储 | 镜像大小 | ≥ 12 GiB（rootfs 解开约 2.6 GiB） |
 
-| 文件 | 用途 |
-| --- | --- |
-| `module/anland-awl.zip` | Magisk 模块，提供 `waylandbridge` daemon 与 `anland.host` binder 服务 |
-| `anland-wayland.apk` | 设备端显示应用（`com.anlandnext`） |
-| `anlandx.tar.gz` | 容器侧会话组件，镜像构建时已内置，无需手动安装 |
-
-```sh
-su -c "magisk --install-module /sdcard/Download/anland-awl.zip"
-adb install -r anland-wayland.apk
-```
-
-装好后重启设备，确认 daemon 与 socket：
-
-```sh
-su -c "service list | grep anland.host"     # 应出现 anland.host: [anland.IHost]
-su -c "ls /data/local/tmp/awl"              # 应出现 wayland-0
-```
-
-若应用提示 `binder anland.host 不可达`，说明 SELinux 没有按名称放行该服务，补一条兜底规则：
+### 3.3 命令行等价形式
 
 ```sh
-su -c 'magiskpolicy --live "allow untrusted_app_29 default_android_service service_manager find"'
-```
-
-**3. 安装 Anland Shell**。从 [anland-shell Releases](https://github.com/SuperTurtleDev/anland-shell/releases) 取 APK 安装，用于启动容器与在容器里拉起应用。
-
-## 安装
-
-从本仓库 Release 下载 `Dagu-Anland-Droidspaces-rootfs-aarch64-*.tar.xz`，放进设备存储，然后在 Droidspaces 里 **容器 → + → 从文件安装** 导入。向导共五步，关键取值：
-
-| 步骤 | 选项 | 取值 |
-| --- | --- | --- |
-| 配置 · 网络 | 网络模式 / DNS | `NAT` / `223.5.5.5,8.8.8.8` |
-| 配置 · 集成与硬件 | GPU 访问 | 开 |
-| 配置 · 集成与硬件 | 配置 Termux:X11 | **关**，本镜像走 Anland |
-| 配置 · 集成与硬件 | Anland 显示 | **关**，那是 Droidspaces 内置的 5.x daemon，与本镜像的 6.x 冲突 |
-| 配置 · 集成与硬件 | 配置 PulseAudio | 开 |
-| 配置 · 安全与启动 | 允许沙箱 | 开 |
-| 配置 · 高级选项 | 绑定挂载点 | `/data/local/tmp/awl:/run/anland` |
-| 配置 · 高级选项 | 指定 init | `/sbin/init` |
-| 存储 | 使用稀疏镜像 | **开**，`suid` 需要 ext4 镜像；目录模式落在 f2fs 上，`sudo` 不可用 |
-| 存储 | 镜像大小 | 不小于 12 GiB |
-
-### 首次启动
-
-1. 在 Droidspaces 或 Anland Shell 里启动容器。
-2. 打开 **Anland Wayland**（`com.anlandnext`），等状态变为 `daemon 运行中`。
-3. 用 Anland Shell 的终端或应用入口启动程序；每个应用成为独立窗口，点一行即全屏。
-
-启动过程中容器内依次发生：
-
-- `systemd-networkd` 在 `eth0` 上取 DHCP 地址；
-- `ds-nat6.service` 派生 `fd64:7370::…/64`，装默认路由并探测上游；
-- `anland-session.service` 等 `/run/anland/wayland-0` 出现，把 `wayland-anland` 链接到 `/run/user/1000`，再启动会话；
-- `docker.service`、`containerd.service` 启动。
-
-## 验证
-
-在容器内执行：
-
-```sh
-ip -br addr show eth0                       # 172.28.x.y/16 与 fd64:7370::…/64
-curl -4 -s -o /dev/null -w '%{http_code}\n' http://www.baidu.com
-curl -6 -s -o /dev/null -w '%{http_code}\n' https://www.baidu.com
-sudo -n id                                  # 稀疏镜像下为 uid=0(root)
-systemctl status anland-session ds-nat6 docker --no-pager
-ls -l /run/user/1000/wayland-anland         # 指向 /run/anland/wayland-0
-```
-
-## Debian 13 / Plasma 6.7
-
-`debian` 分支新增 `Dagu-KDE` 模板：Debian 13 (trixie) 底座 + Plasma 6.7.4 + X11 + Mesa/kgsl。与 `Dagu-Anland` 的主要差异：
-
-| 项目 | Dagu-Anland | Dagu-KDE |
-| --- | --- | --- |
-| 发行版 | Ubuntu 26.04 | Debian 13 |
-| systemd | 257（用 `systemd257.sh` 换装） | 257（发行版自带，`systemd257.sh` 检测后跳过） |
-| 桌面 | Anland 补丁版 KWin（Wayland） | Plasma 6.7.4 + `kwin-x11` |
-| 显示 | `anland-session` | Termux:X11，`desktop-session.service` → `startplasma-x11` |
-| 渲染 | Mesa/kgsl（Anland 后端） | Mesa/kgsl（`MESA_LOADER_DRIVER_OVERRIDE=kgsl`） |
-| 容器开关 | Anland 开、Termux:X11 关 | Termux:X11 关（改绑挂载）、Anland 关 |
-| 音频 | PulseAudio（Anland 会话内置） | PulseAudio，`enable_pulseaudio=1`，socket 桥到 `/tmp/.pulse-socket` |
-| 浏览器 | Firefox | Chromium（Edge 没有 Linux/arm64 版本） |
-| Docker | docker + containerd | docker.io + docker-cli + buildx + compose，overlay2 |
-
-下面从零开始走一遍：Termux 侧准备、导入、启动、验证、排障。
-
-### 1. Termux 侧准备
-
-| 组件 | 用途 |
-| --- | --- |
-| Termux | 提供 `pulseaudio` 与 Termux:X11 的 loader |
-| Termux:X11 | X 服务器，显示号固定 `:5`，启动容器前先打开应用 |
-| `pulseaudio`（Termux 包） | 容器内音频，Droidspaces 以 `u0_a289` 启动它 |
-
-Termux 自带的 `$PREFIX/etc/pulse/default.pa` 需要修补，否则 sink 能建出来、`speaker-test` 也不报错，但 AudioFlinger 里的 track 一直不 active，也就是没有声音。上游 [setup-termux.sh](https://github.com/ravindu644/Droidspaces-OSS/blob/dev/scripts/setup-termux.sh) 做的正是这件事：
-
-```sh
-P=$PREFIX/etc/pulse/default.pa
-sed -i 's|^load-module module-sles-sink|#&|' "$P"
-sed -i 's|^load-module module-console-kit|#&|' "$P"
-sed -i 's|^load-module module-suspend-on-idle|#&|' "$P"
-# 再保证 module-aaudio-sink 排在 module-always-sink 之前，然后重启 pulseaudio
-```
-
-### 2. 导入镜像
-
-从本仓库 Release 下载 `Dagu-KDE-Droidspaces-rootfs-aarch64-*.tar.xz`，拷到设备存储，然后在 Droidspaces 里 **容器 → + → 从文件安装** 导入。向导取值：
-
-| 步骤 | 选项 | 取值 |
-| --- | --- | --- |
-| 配置 · 网络 | 网络模式 / DNS | `NAT` / `223.5.5.5,8.8.8.8` |
-| 配置 · 集成与硬件 | GPU 访问 | 开 |
-| 配置 · 集成与硬件 | 配置 Termux:X11 | **关**（`--x11` 会让设备重启，见下） |
-| 配置 · 集成与硬件 | Anland | 关 |
-| 配置 · 集成与硬件 | PulseAudio | 开（socket） |
-| 配置 · 安全与启动 | 允许沙箱 | 开 |
-| 配置 · 高级选项 | 绑定挂载点 | `/data/data/com.termux/files/usr/tmp:/mnt/termux` |
-| 配置 · 高级选项 | 指定 init | `/sbin/init` |
-| 存储 | 使用稀疏镜像 | **开**（`sudo` 需要 ext4 镜像） |
-| 存储 | 镜像大小 | 不小于 12 GiB |
-
-同一个容器的命令行等价形式：
-
-```sh
-su -c "droidspaces --name=deb13 \
-  --rootfs=/data/local/Droidspaces/Containers/deb13/rootfs \
+su -c "droidspaces --name=deb13 --hostname=deb13 \
+  --rootfs-img=/data/local/Droidspaces/Containers/deb13/rootfs.img \
   --init=/sbin/init --net=nat --dns=223.5.5.5,8.8.8.8 \
   --gpu --pulse-audio \
   -B /data/data/com.termux/files/usr/tmp:/mnt/termux start"
 ```
 
-稀疏镜像把 `--rootfs=` 换成 `--rootfs-img=.../rootfs.img`。
+目录模式把 `--rootfs-img=` 换成 `--rootfs=/data/local/Droidspaces/Containers/deb13/rootfs`。
 
-### 3. 首次启动
+## 4. 首次启动
 
-1. 在 Android 侧打开 **Termux:X11**，等它进入自己的画面。顺序不能反：容器启动时 `-B` 就把 Termux 的 tmp 目录挂进来了，X 服务器后起会挂到空目录。
-2. 启动容器（上面的命令，或 Droidspaces 卡片）。
-3. 等 10–30 秒，Termux:X11 窗口里出现 Plasma 桌面。
+1. **先开 X 服务器**。在 Termux 里执行，并确认 socket 文件出现：
+
+```sh
+termux-x11 :5 &
+ls -l "$TMPDIR/.X11-unix"      # 要能看到 srwxrwxrwx X5
+```
+
+2. 打开 Termux:X11 应用，让它进入自己的画面（黑屏也是正常，等桌面）。
+3. 启动容器（Droidspaces 卡片，或 3.3 的命令）。
+4. 等 10–30 秒，Termux:X11 窗口里出现壁纸与底部面板。
 
 容器内依次发生：
 
 - `systemd-networkd` 在 `eth0` 上取 DHCP 地址，`20-droidspaces-mtu.network` 把 MTU 钉在 1400；
 - `droidspaces-x11-bridge.service` 把 `/mnt/termux/.X11-unix` 挂到 `/tmp/.X11-unix`；
 - `desktop-session.service` 等到 socket 后执行 `startplasma-x11`；
-- `docker.service` 启动。
+- `docker.service`、`containerd.service` 启动。
 
-`--x11` 不要开：Droidspaces 以 termux 用户 `app_process` 拉起 Termux:X11 的那条路径在这台设备上会让机器重启。绑挂载由镜像里的单元接管，不需要手工 `mount`。
+## 5. 常用命令
 
-### 4. 日常使用
+宿主侧命令在 `su -c "…"` 里执行；容器内命令用 `sudo droidspaces --name=deb13 enter` 进去后执行。
 
-| 操作 | 命令（容器内，除注明外） |
+### 5.1 容器
+
+| 操作 | 命令 |
 | --- | --- |
-| 打开浏览器 | `chromium https://www.bilibili.com`，面板里也有 Chromium 图标 |
-| 截图 | `scrot -o ~/shot.png` |
-| 重启桌面会话 | `sudo systemctl restart desktop-session` |
-| 跑容器 | `docker run --rm hello-world` |
-| 进终端 | 宿主：`su -c "droidspaces --name=deb13 enter"` |
-| 关机 | 宿主：`su -c "droidspaces stop deb13"` |
+| 启动 | `su -c "droidspaces --name=deb13 start"`（参数同 3.3） |
+| 进入终端 | `su -c "droidspaces --name=deb13 enter"` |
+| 执行单条命令 | `su -c "droidspaces --name=deb13 run -- <命令>"` |
+| 停止 | `su -c "droidspaces --name=deb13 stop"` |
+| 查看状态 | `su -c "droidspaces show"` |
 
-浏览器自带 `--password-store=basic`、`--hide-crash-restore-bubble`、`--autoplay-policy=no-user-gesture-required`（`/etc/chromium.d/droidspaces`），所以不会弹 KDE 密码服务、也不会自动播放时静音。
+`stop` 报 `Container PID … is in an unkillable state` 时，4.19 上容器 init 杀不掉，只能重启设备。
 
-### 5. 验证
+### 5.2 桌面会话
+
+| 操作 | 命令（容器内） |
+| --- | --- |
+| 重启会话 | `sudo systemctl restart desktop-session` |
+| 看会话状态 | `systemctl status desktop-session --no-pager` |
+| 手工补挂 X11 socket | `sudo /usr/local/bin/droidspaces-x11-bridge` |
+| 检查 socket 是否挂进来 | `ls -l /tmp/.X11-unix` |
+| 截图 | `DISPLAY=:5 scrot -o ~/shot.png` |
+
+### 5.3 桌面不出现时按这个顺序排
+
+`--x11` 不要开：Droidspaces 用 termux 用户 `app_process` 拉 Termux:X11 的那条路径在这台设备上会让机器重启。socket 桥接和会话启动由镜像里的 `droidspaces-x11-bridge.service` 与 `droidspaces-x11-watch.path` 负责，正常情况不需要手工执行：只要 X 服务器的 socket 文件出现，会话会被自动拉起。下面三步是兜底排查。
 
 ```sh
-systemctl status desktop-session.service   # active (running)
-dpkg -s plasma-workspace | grep Version    # 4:6.7.4-*
-glxinfo -B | grep -E "Vendor|Device"       # freedreno / FD650
-pactl info                                 # Server String: unix:/tmp/.pulse-socket
-ip -o link show eth0 | sed 's/.*mtu \([0-9]*\).*/mtu=\1/'   # mtu=1400
-curl -o /dev/null -w '%{speed_download}\n' \
-  https://mirrors.aliyun.com/debian/dists/trixie/Release   # 不应停在中途的 0 字节
+# 1) Termux：确认 X 服务器活着、socket 文件在
+pgrep -f "termux-x11 com.termux.x11"
+ls -l "$TMPDIR/.X11-unix"                 # 空的话重启服务器
+
+# 2) Termux：重启 X 服务器（socket 文件被删掉时用）
+pkill -f "termux-x11 com.termux.x11"
+sleep 1
+termux-x11 :5 &
+ls -l "$TMPDIR/.X11-unix"                 # 必须能看到 X5
+
+# 3) 容器内：socket 存在的前提下手工补一次（正常由 path 单元自动触发）
+sudo /usr/local/bin/droidspaces-x11-bridge
+sudo systemctl start desktop-session
+systemctl status desktop-session --no-pager | head -5
 ```
 
-音频、网络与合成器的实测结论：
+如果 `termux-x11 :5` 报 `Cannot establish any listening sockets` / `server already running`，说明显示号 `:5` 被占：`pgrep -af termux-x11` 找到旧进程并 `kill -9`，再启动一次。
 
-| 项目 | 结论 |
+### 5.4 浏览、音频、网络
+
+| 操作 | 命令 |
 | --- | --- |
-| 声音 | 依赖 Termux 侧 `default.pa` 的修补（见上）；修好后 AudioFlinger 显示 `1 Tracks of which 1 are active` |
-| 网络 | NAT 路径 MTU 不足 1500，镜像把 `eth0` 钉在 1400；按 1500 走时下载与视频加载会偶发卡在 0 字节 |
-| kwin 合成器 | OpenGL 合成在 kgsl 上把窗口内容采成黑色，`QPainter` 与 llvmpipe 正常；镜像默认关闭合成，应用仍由 GPU 渲染 |
-| 视频解码 | 没有 `msm` DRM 就没有 VA-API，1080p 由 4 个核心软解；内存吃满时画面会掉帧 |
+| 打开浏览器 | `chromium https://www.bilibili.com`（面板里也有图标） |
+| 手动指定软件渲染 | `LIBGL_ALWAYS_SOFTWARE=1 chromium <url>` |
+| 看 sink 与音量 | `pactl list short sinks` / `pactl set-sink-volume AAudio_sink 100%` |
+| 声音自检 | `pactl info` / `speaker-test -c 2 -t sine -l 1` |
+| 看 Android 侧是否真的出声 | 宿主：`su -c "dumpsys media.audio_flinger \| grep 'Tracks of which'"` |
+| 改 MTU | `sudo ip link set eth0 mtu 1400`（镜像已默认，临时排查用） |
 
-### 6. 排障
+**Termux 侧音频修补**（只做一次）。默认的 `default.pa` 会建出 sink 但不发声：
+
+```sh
+P=$PREFIX/etc/pulse/default.pa
+sed -i 's|^load-module module-sles-sink|#&|' "$P"
+sed -i 's|^load-module module-console-kit|#&|' "$P"
+sed -i 's|^load-module module-suspend-on-idle|#&|' "$P"
+# 再确认 module-aaudio-sink 排在 module-always-sink 之前，然后重启 pulseaudio
+```
+
+改完的判据：宿主 `dumpsys media.audio_flinger` 播放时显示 `1 Tracks of which 1 are active`。
+
+### 5.5 容器运行时
+
+| 操作 | 命令（容器内） |
+| --- | --- |
+| 验证 Docker | `docker run --rm hello-world` |
+| 看 Docker 版本 | `docker version --format '{{.Server.Version}}'` |
+| 装软件 | `sudo apt update && sudo apt install <包>` |
+
+容器里面向 trixie 源，unstable 源在构建完就删了，可以正常 `apt upgrade`（Plasma 会停在 6.7.4）。
+
+## 6. 验证
+
+```sh
+systemctl status desktop-session.service      # active (running)
+dpkg -s plasma-workspace | grep Version       # 4:6.7.4-*
+glxinfo -B | grep -E "Vendor|Device"          # freedreno (0x5143) / FD650
+vulkaninfo --summary | grep -m1 deviceName    # Adreno (TM) 650
+glmark2 -b build:duration=2 -s 640x360        # 分数参考 280（XRender 会话下）
+ip -o link show eth0 | sed 's/.*mtu \([0-9]*\).*/mtu=\1/'   # mtu=1400
+pactl info                                    # Server String: unix:/tmp/.pulse-socket
+docker version --format '{{.Server.Version}}'  # 29.9.2
+```
+
+## 7. 排障
 
 | 症状 | 原因与处理 |
 | --- | --- |
-| 桌面不出现，`/tmp/.X11-unix` 为空 | Termux:X11 的 loader 退出。宿主重跑 loader 后，容器内 `sudo systemctl restart desktop-session` |
-| 有画面没声音 | 播放器被自动静音：点播放器上的喇叭；镜像里的 `/etc/chromium.d/droidspaces` 已带自动播放参数 |
-| `pactl` 报 `Connection refused` | pulseaudio 重启后 socket inode 变了，容器里绑的还是旧的。用 `PULSE_SERVER=unix:/mnt/termux/.pulse-socket`，或重启容器 |
-| 下载 / 视频卡在 0 字节 | MTU 没生效，确认 `ip link show eth0` 是 1400 |
-| 画面全黑只剩光标 | `KDE_COMPOSITING=true` 打开了 OpenGL 合成；改回 `false` 并重启会话 |
-| `stop` 报 `unkillable state` | 4.19 下容器 init 杀不掉，重启设备后容器目录仍在，直接再 `start` |
+| 桌面不出现，`/tmp/.X11-unix` 为空 | Termux:X11 的 socket 文件不存在或没挂进来。按 5.3 走一遍 |
+| `desktop-session` 显示 `inactive (dead) (Result: exec-condition)` | 启动时 socket 还不存在。`droidspaces-x11-watch.path` 会在 X5 出现后自动再拉起；也可先跑桥接再 `systemctl start desktop-session` |
+| `termux-x11` 报 `server already running` | 显示号被旧进程占着：`pgrep -af termux-x11` → `kill -9` → 重启 |
+| 有画面没声音 | 播放器被自动静音（点喇叭）；或 Termux 的 `default.pa` 没修补（见 5.4） |
+| `pactl` 报 `Connection refused` | pulseaudio 重启后 socket inode 变了，容器里挂的还是旧的。用 `PULSE_SERVER=unix:/mnt/termux/.pulse-socket`，或重启容器 |
+| 下载 / 视频卡在 0 字节 | MTU 没生效：`ip link show eth0` 应为 1400 |
+| 画面全黑只剩光标 | 打开了 OpenGL 合成（`KDE_COMPOSITING=true`）。改回 `false` 并重启会话 |
+| `glxinfo` 报 `couldn't find RGB GLX visual` | 缺 `libllvm19`：`ldd /usr/lib/aarch64-linux-gnu/libEGL_mesa.so.0.0.0 \| grep "not found"` |
+| Chromium 报 `No usable sandbox!` | 缺 `chromium-sandbox`（镜像已带；手工装过 `chromium` 的话补上） |
+| 锁屏后只剩黑板 | 锁屏组件在 Termux:X11 下解不开。会话里 `pkill -f kscreenlocker_greet`，或确认 `~/.config/kscreenlockerrc` 里 `Autolock=false` |
+| `stop` 报 `unkillable state` | 4.19 下容器 init 杀不掉，重启设备；容器目录仍在，直接再 `start` |
 
-Plasma 6.7 要求 glibc ≥ 2.43，而 trixie 是 2.41，模板因此从 unstable 取 KDE/Qt/KF6，并把 systemd、udev、dbus 等底座按精确版本钉死在 trixie；构建期还会断言 systemd 运行时与包族都是 257，否则不产出镜像。镜像内置 Docker 26.1、buildx 与 compose、Chromium 与 scrot，CI 在 runner 上先补装 docker 与 CLI 再调用 `build.sh`。依赖解析与回退方式见 [docs/debian-plasma67.md](docs/debian-plasma67.md)。
+## 8. 已知限制
 
-## 重建容器
+- **桌面合成器不走 GPU**：kwin 的 OpenGL 合成在 kgsl 上把窗口内容采成黑色（`GLX_EXT_texture_from_pixmap` / DRI3 dmabuf 路径），所以默认 `Compositing=false`，窗口合成走 XRender。应用自身的 GL/EGL 仍是硬件渲染（`glxinfo` 显示 freedreno、`glmark2` 281 分）。
+- **没有硬件视频解码**：4.19 厂商内核只有 kgsl、没有 `msm` DRM，VA-API 不可用，1080p 由 4 个核心软解，内存吃满时掉帧。
+- **没有 Edge**：`packages.microsoft.com` 的 `binary-arm64` 索引为空，Edge 没有 Linux/arm64 版本，镜像里是 Chromium。
+- **混装栈**：glibc 2.43、Qt 6.11.2、KF 6.30 来自 unstable，属于 Debian 不支持的组合；要完全原生就 `KDE_STACK=trixie` 构建，得到 Plasma 6.3.6。
+- **IPv6 取决于宿主**：宿主没有全局 IPv6 时，容器只有 `fd64:7370::/48` 内地址，出网走 IPv4。
+- **`macvlan` 不可用**：Wi-Fi 只收目的地址是自己的帧，用 NAT。
+- **声音依赖 Termux 侧修补**：`default.pa` 不改就是不出声的 sink。
+- **目录模式不能 `sudo`**：f2fs 挂载带 `nosuid`，要用稀疏镜像或 `droidspaces enter`。
 
-长按容器卡片 → **卸载容器**，输入容器名确认，会删除 rootfs 与设置；之后按上面的向导重新安装。
+## 9. 自行构建
 
-## 命令行等价形式
-
-```sh
-su -c "droidspaces --name=kubuntu \
-  --rootfs-img=/data/local/Droidspaces/Containers/kubuntu/rootfs.img \
-  --init=/sbin/init --net=nat --dns=223.5.5.5,8.8.8.8 \
-  --pulse-audio --gpu --allow-sandboxing start"
-```
-
-## 自行构建
-
-**GitHub Actions**：`debian` 分支上推送到该分支，或在 Actions 页面手动触发，都会构建 `Dagu-KDE` 并发布新的 Release，同时更新 `rootfs.json`。本分支的工作流只构建这一个模板，不再产出 `Dagu-Anland` 镜像。
+**GitHub Actions**：推送到 `debian` 分支，或在 Actions 页面手动触发，会构建 `Dagu-KDE` 并发布 Release，同时更新 `rootfs.json`。工作流只构建这一个模板。
 
 **本地**：
 
 ```sh
-./build.sh -a aarch64 -i Dagu-Anland -v v20261102-120000
 ./build.sh -a aarch64 -i Dagu-KDE -v v20261102-120000
 ```
 
-依赖 Docker（含 buildx）、`jq`、`xz`。产物为 `<模板>-Droidspaces-rootfs-aarch64-<日期>-<版本>.tar.xz`。模板的默认参数放在同目录的 `.env`（如 `templates/aarch64/Dagu-KDE.env`），已导出的环境变量优先。
+依赖 Docker（含 buildx）、`jq`、`xz`。产物为 `Dagu-KDE-Droidspaces-rootfs-aarch64-<日期>-<版本>.tar.xz`。模板默认参数在 `templates/aarch64/Dagu-KDE.env`，已导出的环境变量优先。
 
-## 目录结构
+| 构建变量 | 默认 | 作用 |
+| --- | --- | --- |
+| `KDE_STACK` | `unstable` | `trixie` 构建 Plasma 6.3.6 原生栈 |
+| `KDE_COMPOSITING` | `false` | `true` 打开 kwin OpenGL 合成（kgsl 上黑屏） |
+| `ENABLE_MESA` | `true` | 装 Mesa-for-Android（kgsl） |
+| `ENABLE_SYSTEMD257` | `true` | 走 `systemd257.sh`；Debian 13 已是 257，脚本检测后跳过 |
+| `ENABLE_DOCKER` / `ENABLE_ZIP` / `ENABLE_ZH_TZ` | `true` | 装 Docker / 压缩工具 / 中文 |
+| `KDE_UNSTABLE_SNAPSHOT` | 空 | 指定 snapshot 日期可复现构建 |
+
+## 10. 目录结构
 
 ```
 archs.json                                  架构到 Docker 平台与 CI runner 的映射
-build.sh                                    构建单个模板
-templates/aarch64/Dagu-Anland.Dockerfile    Ubuntu + Anland 镜像定义
+build.sh                                    构建单个模板（读取同名 .env 作为默认值）
 templates/aarch64/Dagu-KDE.Dockerfile       Debian 13 + Plasma 6.7 镜像定义
 templates/aarch64/Dagu-KDE.env              该模板的默认构建参数
-docs/debian-plasma67.md                     Debian 分支的依赖解析与已知风险
-rootfs/                                     覆盖进镜像的文件
-  etc/systemd/network/10-droidspaces.network
-  etc/systemd/system/{anland-session,ds-nat6,dagu-firstboot,droidspaces-x11-bridge}.service
+scripts/install-desktop.sh                  按发行版安装桌面
+scripts/configure-desktop.sh                写桌面配置、装 desktop-session.service
+scripts/start-desktop-session.sh            按 DESKTOP:BACKEND 起会话
+scripts/desktops/kde.sh                     KDE 的包列表与 unstable 栈安装/校验
+scripts/tui/install-mesa.sh                 Mesa-for-Android（kgsl）安装
+scripts/systemd257.sh                       systemd 257 兼容检查
+scripts/start/desktop-session.service       会话单元模板
+scripts/generate_rootfs_json.py             由 Release 资产生成 rootfs.json
+docs/debian-plasma67.md                     依赖解析、混装约束与实测记录
+rootfs/                                     覆盖进镜像的运行时文件
+  etc/systemd/network/{10-droidspaces,20-droidspaces-mtu}.network
+  etc/systemd/system/{ds-nat6,dagu-firstboot,droidspaces-x11-bridge}.service
+  etc/systemd/system/droidspaces-x11-watch.path
   etc/docker/daemon.json
   etc/profile.d/90-droidspaces-session.sh
   usr/lib/tmpfiles.d/droidspaces-session.conf
-  usr/local/bin/{start-anland-session,ds-nat6-up.sh,droidspaces-x11-bridge}
+  usr/local/bin/{ds-nat6-up.sh,droidspaces-x11-bridge}
   usr/local/sbin/dagu-firstboot
-scripts/install-anlandx.sh                  容器侧 Anland 会话组件
-scripts/generate_rootfs_json.py             由 Release 资产生成 rootfs.json
 rootfs.json                                 供 Droidspaces 添加仓库时读取
 ```
 
-## 已知限制
-
-- 目录模式的 rootfs 落在 Android 的 f2fs 上，挂载带 `nosuid`，`sudo` 与其它 setuid 程序在内核层面失效；需要 root 请使用稀疏镜像，或用 `droidspaces enter`。
-- Anland 6.x 是「每个应用一个窗口」，没有整合成整块桌面的合成器；窗口由 `anland-miniwm` 管理，X11 程序共用一个 Xwayland 窗口。
-- IPv6 能否出网取决于宿主网络：宿主没有全局 IPv6 时，容器只有 `fd64:7370::/48` 内的地址，出网走 IPv4。
-- `macvlan` 网络模式在 Wi-Fi 上不可用（网卡只接收目的地址为自身的帧），请使用 NAT。
-- 声音依赖「配置 PulseAudio」开关与 Termux 侧的 `default.pa` 修补；两者任一缺失时容器内只有不出声的 sink。
-- 镜像内 `/etc/resolv.conf` 默认为 `1.1.1.1`，向导里填写的 DNS 会覆盖它。
-- `Dagu-KDE` 的 glibc 2.43 来自 unstable，属于 Debian 不支持的混装；需要完全发行版原生的镜像时用 `KDE_STACK=trixie` 构建，得到 Plasma 6.3.6。
-- `Dagu-KDE` 的桌面合成器默认关闭：kwin 的 OpenGL 合成在 kgsl 上采样窗口内容得到全黑，`QPainter` 与 llvmpipe 正常。应用自身的 GL/EGL 仍是硬件渲染。
-- `Dagu-KDE` 没有硬件视频解码：4.19 厂商内核只有 kgsl、没有 `msm` DRM，VA-API 不可用，1080p 由 CPU 软解。
-- 浏览器只有 Chromium：Microsoft Edge 没有 Linux/arm64 版本，`packages.microsoft.com` 的 `binary-arm64` 索引为空。
-
-## 许可
+## 11. 许可
 
 MIT。

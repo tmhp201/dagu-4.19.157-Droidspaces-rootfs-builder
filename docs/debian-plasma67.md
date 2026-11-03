@@ -1,6 +1,6 @@
 # Debian 13 + Plasma 6.7 + X11 + GPU 渲染
 
-`debian` 分支交付的第二个模板 `templates/aarch64/Dagu-KDE.Dockerfile`：Debian 13 (trixie) 底座，KDE Plasma 6.7.4 桌面，显示走 Termux:X11（`DISPLAY=:5`），渲染走 Mesa + `kgsl`（Freedreno），面向 dagu（`4.19.157`）的 Droidspaces 容器。
+`debian` 分支只有这一个模板 `templates/aarch64/Dagu-KDE.Dockerfile`：Debian 13 (trixie) 底座，KDE Plasma 6.7.4 桌面，显示走 Termux:X11（`DISPLAY=:5`），渲染走 Mesa + `kgsl`（Freedreno），面向 dagu（`4.19.157`）的 Droidspaces 容器。
 
 ## 结论
 
@@ -12,7 +12,7 @@
 | 6.7.4 只在 unstable/forky | `plasma-workspace 4:6.7.4-2`、`plasma-desktop 4:6.7.4-1+b1`、`kwin-x11 4:6.7.4-1+b1`（arm64 均有） |
 | Qt 6.11.2 要求 glibc ≥ 2.43 | `libqt6gui6:arm64=6.11.2+dfsg-7 依赖 libc6 (>= 2.43)`，trixie 只有 2.41 |
 | X11 会话随 6.7 一起结束 | 上游在 Plasma 6.8 去掉了 X11 会话，6.7 是最后一个带 `kwin-x11` 的版本；unstable 里 `plasma-workspace` 仍提供 `/usr/bin/startplasma-x11` 与 `/usr/share/xsessions/plasmax11.desktop` |
-| 4.19 内核只能配 systemd 257 | 与 Anland 分支同一个约束：systemd 262 依赖的接口 4.19 没有 |
+| 4.19 内核只能配 systemd 257 | systemd 262 依赖的接口 4.19 没有，本方案因此把运行时栈钉在 257 |
 
 所以本模板做的是「trixie 底座 + unstable 的 KDE 栈」：底座（systemd、udev、dbus、kmod、init-system-helpers）按精确版本钉死在 trixie，只让 KDE/Qt/KF6 以及它们硬依赖的少数库走 unstable。
 
@@ -51,7 +51,7 @@ systemd、udev、dbus-daemon、libdbus-1-3、kmod 全部保持 trixie 版本；`
 | 渲染 | `/etc/environment` 写 `MESA_LOADER_DRIVER_OVERRIDE=kgsl`、`TU_DEBUG=noconform`；Mesa 来自 `install-mesa`（`debian_trixie_arm64` 包，arm64 专用构建） |
 | 合成器 | `KDE_COMPOSITING=true` 时 kwin 走 OpenGL 合成，在 kgsl 上采样窗口内容得到全黑；默认关闭（`kwinrc` `[Compositing] Enabled=false`），应用自身的 GL/EGL 仍走 GPU |
 | GPU 节点 | Droidspaces `--gpu` 镜像 `/dev/kgsl-3d0`、`/dev/dri/renderD*`；容器用户需在 `droidspaces-gpu` 组（gid 786，构建时已加） |
-| socket 桥接 | `droidspaces-x11-bridge.service` 把 `/mnt/termux/.X11-unix` 挂到 `/tmp/.X11-unix`，与 `desktop-session.service` 同批启动；`--x11` 关闭时由它补上这个路径 |
+| socket 桥接 | `droidspaces-x11-bridge.service` 把 `/mnt/termux/.X11-unix` 整个目录挂到 `/tmp/.X11-unix`；`droidspaces-x11-watch.path` 盯着 `/tmp/.X11-unix/X5`，socket 出现就拉起 `desktop-session.service` |
 
 4.19 厂商内核没有 `msm` DRM，只有 `/dev/kgsl-3d0`，因此不能走 Zink/VirGL 那套；Freedreno 的 `kgsl` 后端是唯一的硬件 GL 路径。Mesa-for-Android 的 `libEGL_mesa`/`libgallium` 链接 `libLLVM.so.19.1`，所以镜像必须装发行版的 `libllvm19`（trixie 自带 `1:19.1.7-3+b1`）；缺它时 `libEGL_mesa` 加载失败，`glxinfo` 报 `couldn't find RGB GLX visual or fbconfig`，kwin 与 plasmashell 都起不来。
 
@@ -77,7 +77,7 @@ systemd、udev、dbus-daemon、libdbus-1-3、kmod 全部保持 trixie 版本；`
 | 变量 | 默认 | 说明 |
 | --- | --- | --- |
 | `KDE_STACK` | `unstable` | `trixie` 时退回发行版原生 Plasma 6.3.6，完全不碰 unstable |
-| `DISPLAY_BACKEND` | `x11` | 只能是 `x11`（KDE + Anland Wayland 需要 Anland 补丁版 KWin） |
+| `DISPLAY_BACKEND` | `x11` | 只能是 `x11`，本模板没有 Wayland 后端 |
 | `KDE_COMPOSITING` | `false` | `true` 时打开 kwin 的 OpenGL 合成器 |
 | `ENABLE_MESA` | `true` | 装 arm64 的 Mesa；关掉则用发行版 Mesa（无 kgsl 驱动） |
 | `KDE_UNSTABLE_SNAPSHOT` | 空 | 填 snapshot.debian.org 的时间戳可复现构建，套件改用 `unstable` |
@@ -90,21 +90,11 @@ systemd、udev、dbus-daemon、libdbus-1-3、kmod 全部保持 trixie 版本；`
 - 构建期：`KDE_DEBIAN_BASE_PINNED` 把 systemd 家族按精确版本钉在 trixie，`debian_unstable_verify` 在装完 KDE 后逐包比对已安装版本与 trixie 候选版本，不一致即失败；模板随后再断言 `systemctl --version` 的主版本为 257、`systemd`/`udev`/`libsystemd*`/`libudev*` 全部落在 `257.*`。断言失败直接中断构建，不会产出镜像。
 - 运行期：发行版自带的 257 即目标版本，不再替换整套 systemd；networkd 仍使用 `rootfs/` 里的 `10-droidspaces.network`（`IPv6AcceptRA=no`）与 `ds-nat6.service`，绕开 networkd 257 用 nexthop 对象下发 RA 路由、而 4.19 不支持的老问题。
 
-`ENABLE_SYSTEMD257=true` 调用的是与上游同一份 `systemd257.sh`：它只对 Ubuntu 26.04、Fedora 43/44 和 Arch 提供预构建包族，遇到已经是 257 的发行版会记录一行后返回，既不会重装也不会报错；只有「systemd 不是 257 且发行版没有预构建包族」时才失败。改成 `false` 只跳过这一层检查，构建期的版本断言仍然生效。
+`ENABLE_SYSTEMD257=true` 调用的是与上游同一份 `systemd257.sh`：它的预构建包族只覆盖 Ubuntu 26.04、Fedora 43/44 和 Arch；对已经是 257 的发行版（Debian 13 就是）只记录一行后返回，不重装也不报错。改成 `false` 只跳过这一层检查，构建期的版本断言仍然生效。
 
 ## 使用
 
-下载 `Dagu-KDE-Droidspaces-rootfs-aarch64-*.tar.xz`，在 Droidspaces 里从文件导入。向导取值：
-
-| 步骤 | 选项 | 取值 |
-| --- | --- | --- |
-| 配置 · 网络 | 网络模式 / DNS | `NAT` / `223.5.5.5,8.8.8.8` |
-| 配置 · 集成与硬件 | GPU 访问 | 开 |
-| 配置 · 集成与硬件 | 配置 Termux:X11 | **关** |
-| 配置 · 集成与硬件 | Anland | 关 |
-| 配置 · 集成与硬件 | PulseAudio | 开（socket） |
-| 配置 · 沙箱 | 允许沙箱 | 开 |
-| 配置 · 高级选项 | 绑定挂载点 | `/data/data/com.termux/files/usr/tmp:/mnt/termux` |
+导入与向导的逐项取值见 [README 的安装章节](../README.md#32-向导逐项取值)，这里只记与本模板实现相关的部分。
 
 命令行等价形式：
 
@@ -117,11 +107,11 @@ droidspaces --name=kde --rootfs-img=dagu-kde.img --init=/sbin/init \
 `--x11` 会让 Droidspaces 以 termux 用户 `app_process` 起 Termux:X11，这一步在 dagu 上会直接重启设备（命令无输出、`uptime` 归零），因此容器启动时不开它，X 服务器由 Android 侧的 Termux:X11 应用提供。镜像内的 `droidspaces-x11-bridge.service` 在启动时把 `/mnt/termux/.X11-unix` 挂到 `/tmp/.X11-unix`，`desktop-session.service` 排在它之后。手工补这一步仍然可用：
 
 ```sh
-mount --bind /mnt/termux/.X11-unix /tmp/.X11-unix
+/usr/local/bin/droidspaces-x11-bridge      # 幂等：已挂载或源目录不存在时直接返回
 systemctl restart desktop-session
 ```
 
-`desktop-session.service` 的 `ExecCondition` 认两种情况：`container.config` 里 `enable_x11=1`，或者 `/tmp/.X11-unix/X*` 已存在，所以上面的手工桥接也能把会话拉起来。
+`desktop-session.service` 的 `ExecCondition` 认两种情况：`container.config` 里 `enable_x11=1`，或者 `/tmp/.X11-unix/X*` 已存在。开机时 Termux:X11 通常还没启动，条件不满足会被跳过（`inactive (dead) (Result: exec-condition)`）；`droidspaces-x11-watch.path` 监视 `/tmp/.X11-unix/X5`，文件一出现就再次 start 该单元，所以不需要手工介入。会话脚本自己最多等 15 秒，超时就退出并把原因写进 journal。
 
 顺序不能反：`-B` 在启动时就把源目录挂进来，先起容器再起 X 服务器会挂到空目录。没有图形界面时可以用 loader 手工起服务器（显示号固定 `:5`）：
 
@@ -153,7 +143,7 @@ sed -i 's|^load-module module-suspend-on-idle|#&|' "$P"      # 切音频设备�
 
 **网络**：Droidspaces 的 NAT 走宿主转发，链路 MTU 不足 1500。容器 eth0 按 1500 走时，超路径 MTU 的报文被静默丢弃，表现是下载、视频加载偶发卡在 0 字节——同一个文件 1500 下 5 次里 2 次超时，1400 下 5 次全部成功（3.4–7 MB/s）。镜像里用 `/etc/systemd/network/20-droidspaces-mtu.network` 把 MTU 钉在 1400。
 
-**Docker**：trixie 的 `docker.io` 只提供 `dockerd`，CLI 拆到了 `docker-cli`，模板两个都装。dockerd 以 overlay2 起得来，`docker run --rm hello-world` 实测通过；`/etc/docker/daemon.json` 预设了 `docker.m.daocloud.io` 与 `docker.1ms.run` 两个镜像源。
+**Docker**：trixie 自带的 `docker.io` 冻结在 26.1.5，模板改用 Docker 官方仓库（`download.docker.com/linux/debian`，trixie/arm64）装 `docker-ce` 29.9.2、`containerd.io` 2.4.2、`docker-buildx-plugin` 0.38.1、`docker-compose-plugin` 5.7.0，`update-alternatives` 仍切到 `iptables-legacy`。版本由 `DOCKER_VERSION` / `CONTAINERD_VERSION` 控制，留空装候选版本；`DOCKER_SOURCE=debian` 可退回发行版包。dockerd 以 overlay2 起得来，`docker run --rm hello-world` 实测通过；`/etc/docker/daemon.json` 预设了 `docker.m.daocloud.io` 与 `docker.1ms.run` 两个镜像源。
 
 **浏览器**：镜像装 `chromium` 与 `chromium-sandbox`，并由 `/etc/chromium.d/droidspaces` 追加三个参数——`--password-store=basic` 免掉首次启动的 KDE 密码服务弹窗，`--hide-crash-restore-bubble` 免掉崩溃恢复气泡，`--autoplay-policy=no-user-gesture-required` 让命令行直接打开页面时带声音。不带最后一个参数时 Chromium 会静音自动播放：画面正常、`pactl list short sink-inputs` 为空。Edge 没有 Linux/arm64 版本，`packages.microsoft.com` 的 `binary-arm64` 索引为空。
 
