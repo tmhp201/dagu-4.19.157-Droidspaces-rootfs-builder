@@ -145,7 +145,7 @@ sed -i 's|^load-module module-suspend-on-idle|#&|' "$P"      # 切音频设备�
 
 **Docker**：trixie 自带的 `docker.io` 冻结在 26.1.5，模板改用 Docker 官方仓库（`download.docker.com/linux/debian`，trixie/arm64）装 `docker-ce` 29.9.2、`containerd.io` 2.4.2、`docker-buildx-plugin` 0.38.1、`docker-compose-plugin` 5.7.0，`update-alternatives` 仍切到 `iptables-legacy`。版本由 `DOCKER_VERSION` / `CONTAINERD_VERSION` 控制，留空装候选版本；`DOCKER_SOURCE=debian` 可退回发行版包。dockerd 以 overlay2 起得来，`docker run --rm hello-world` 实测通过；`/etc/docker/daemon.json` 预设了 `docker.m.daocloud.io` 与 `docker.1ms.run` 两个镜像源。
 
-**浏览器**：镜像装 `chromium` 与 `chromium-sandbox`，并由 `/etc/chromium.d/droidspaces` 追加三个参数——`--password-store=basic` 免掉首次启动的 KDE 密码服务弹窗，`--hide-crash-restore-bubble` 免掉崩溃恢复气泡，`--autoplay-policy=no-user-gesture-required` 让命令行直接打开页面时带声音。不带最后一个参数时 Chromium 会静音自动播放：画面正常、`pactl list short sink-inputs` 为空。Edge 没有 Linux/arm64 版本，`packages.microsoft.com` 的 `binary-arm64` 索引为空。
+**浏览器**：镜像只装 `firefox-esr`，并用 `/usr/lib/firefox-esr/defaults/pref/droidspaces.js` 关掉 `about:welcome`、把首页设成 `about:blank`、关掉遥测与默认浏览器询问。Chromium 不再预装：它的内容进程在这套 kgsl + Termux:X11 上要 `--disable-gpu-compositing` 才不全屏回退、要 `--autoplay-policy=no-user-gesture-required` 才不静音自动播放，参数负担重。Edge 没有 Linux/arm64 版本，`packages.microsoft.com` 的 `binary-arm64` 索引为空。
 
 ## 验证
 
@@ -174,7 +174,7 @@ su -c "cat /run/droidspaces/containers/kde/container.config" | grep -E "enable_x
 | glibc 混装 | 2.43 的 `libc6` 配 257 的 systemd 属于 Debian 不支持的 partial upgrade | `KDE_STACK=trixie` 重新构建，退回 Plasma 6.3.6 |
 | kwin 合成器 | 打开后窗口内容全黑，只剩 kwin 绘制的装饰（矩阵见上）；属于 kgsl 的 texture-from-pixmap 限制 | 默认关闭（`KDE_COMPOSITING=false`）；需要合成时用 `KWIN_COMPOSE=Q` 或 llvmpipe，应用仍走 GPU 的 GLX/EGL |
 | 视频解码 | 没有 `msm` DRM 就没有 VA-API，1080p 由 CPU 软解；内存吃满时掉帧 | 降低播放分辨率、关闭多余程序 |
-| 浏览器 | Microsoft Edge 没有 Linux/arm64 版本，`packages.microsoft.com` 的 `binary-arm64` 索引为空 | 镜像内置 Chromium 与 `chromium-sandbox` |
+| 浏览器 | Microsoft Edge 没有 Linux/arm64 版本；Chromium 需额外参数才能正常全屏/发声 | 镜像内置 Firefox ESR，默认值见上 |
 | 容器网络 | Droidspaces `--net=nat` 依赖容器内 DHCP 客户端；`systemd-networkd` 被屏蔽时 eth0 拿不到地址、DNS 全失效 | 镜像已保留 networkd/resolved，只屏蔽 udevd 与 NetworkManager |
 | Plasma 6.8 | 上游去掉 X11 会话，本方案停在 6.7.x 不再上移 | 无：再往上必须转 Wayland |
 | amd64 动态程序 | 装了 `qemu-user-static` 与 `binfmt-support`，静态 x86_64 二进制可执行；动态程序缺 amd64 的 `libc6`（glibc 2.43 与 trixie 的 2.41 无法并存） | 只用静态二进制，或另行从 unstable 取同版本 `libc6:amd64` |

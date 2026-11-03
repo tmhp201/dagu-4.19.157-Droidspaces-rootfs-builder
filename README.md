@@ -12,7 +12,7 @@
 | 渲染 | Mesa 26.3.0（`MESA_LOADER_DRIVER_OVERRIDE=kgsl`），Adreno 650 / freedreno |
 | init | systemd 257.13（4.19 内核上验证过的版本） |
 | 容器 | Docker 29.9.2 + buildx 0.38.1 + compose 5.7.0（官方仓库），overlay2 |
-| 浏览器 | Chromium 156（自动播放带声音、免密码服务弹窗） |
+| 浏览器 | Firefox ESR（首启不等外网、首页 `about:blank`） |
 | 用户 | `dagu` / `1234`，`sudo` 免密 |
 
 ## 1. 对 Debian 13 基础镜像做了什么
@@ -34,7 +34,7 @@
 | 显示与 X11 | `xserver-xorg` `x11-xserver-utils` `x11-utils` `xauth` `xkb-data` `libxcb-cursor0` |
 | 音频 | `pipewire` `pipewire-alsa` `pipewire-pulse` `wireplumber` `libcanberra-pulse` `pulseaudio-utils` `alsa-utils` `gstreamer1.0-plugins-base` `gstreamer1.0-plugins-good` `sound-theme-freedesktop` |
 | 图形验证 | `mesa-utils` `vulkan-tools` `clinfo` `glmark2` `vkmark` `dmidecode` `libdisplay-info-bin` `wayland-utils` `aha` `upower` `xdg-user-dirs` |
-| 浏览器 | `chromium` `chromium-sandbox` `scrot` |
+| 浏览器 | `firefox-esr` `scrot` |
 | amd64 兼容 | `qemu-user-static` `binfmt-support`（注册 binfmt 处理器，静态 x86_64 二进制可直接运行；动态程序还需要 amd64 的 `libc6`，见下） |
 | 容器 | `docker-ce` `docker-ce-cli` `containerd.io` `docker-buildx-plugin` `docker-compose-plugin`（Docker 官方仓库，非 trixie 的 26.1.5） |
 
@@ -65,7 +65,7 @@ Mesa 不用发行版包：构建时调用 `scripts/tui/install-mesa.sh --1`，�
 | `/etc/logrotate.conf` | `maxsize 50M` | 容器长期运行时的日志上限 |
 | `/etc/tmpfiles.d/x11.conf` | `d /tmp/.X11-unix 1777 root root -`，覆盖 `D!` | 该目录是宿主 `$TMPDIR/.X11-unix` 的 bind 挂载，开机清空会删掉活着的 X5 |
 | `/etc/ssh/sshd_config` | `PermitRootLogin no`，`PasswordAuthentication yes` | 只允许 `dagu` 登录 |
-| `/etc/chromium.d/droidspaces` | `--password-store=basic --hide-crash-restore-bubble --autoplay-policy=no-user-gesture-required` | 免密钥环弹窗、免崩溃恢复气泡、自动播放带声音 |
+| `/usr/lib/firefox-esr/defaults/pref/droidspaces.js` | 关 `about:welcome`、首页 `about:blank`、关遥测 | 首次启动不去等 mozilla.org，直接出窗口 |
 | `/etc/passwd`、`/etc/group`、`/etc/adduser.conf` | 建 `aid_inet:3003` `aid_net_raw:3004` `aid_net_admin:3005` `droidspaces-gpu:786`，`dagu` 加入 `sudo input video tty aid_inet aid_net_raw droidspaces-gpu` | Android 侧的 AID 与 GPU 节点属组 |
 | `/etc/droidspaces` | 写入构建时间戳 | 标记解包后修复已执行 |
 | `/etc/droidspaces-kde-stack` | 记录 `stack` `plasma` `qt` `glibc` `systemd` `systemd-verified` | 排查时一眼看到装的是哪套栈 |
@@ -231,8 +231,8 @@ systemctl status desktop-session --no-pager | head -5
 
 | 操作 | 命令 |
 | --- | --- |
-| 打开浏览器 | `chromium https://www.bilibili.com`（面板里也有图标） |
-| 手动指定软件渲染 | `LIBGL_ALWAYS_SOFTWARE=1 chromium <url>` |
+| 打开浏览器 | `firefox-esr https://www.bilibili.com`（面板里也有图标） |
+| 手动指定软件渲染 | `LIBGL_ALWAYS_SOFTWARE=1 firefox-esr <url>` |
 | 看 sink 与音量 | `pactl list short sinks` / `pactl set-sink-volume AAudio_sink 100%` |
 | 声音自检 | `pactl info` / `speaker-test -c 2 -t sine -l 1` |
 | 看 Android 侧是否真的出声 | 宿主：`su -c "dumpsys media.audio_flinger \| grep 'Tracks of which'"` |
@@ -283,9 +283,9 @@ docker version --format '{{.Server.Version}}'  # 29.9.2
 | 有画面没声音 | 播放器被自动静音（点喇叭）；或 Termux 的 `default.pa` 没修补（见 5.4） |
 | `pactl` 报 `Connection refused` | pulseaudio 重启后 socket inode 变了，容器里挂的还是旧的。用 `PULSE_SERVER=unix:/mnt/termux/.pulse-socket`，或重启容器 |
 | 下载 / 视频卡在 0 字节 | MTU 没生效：`ip link show eth0` 应为 1400 |
+| `apt update` 先卡十秒再失败 | 镜像已把 IPv4 提到前面（`/etc/gai.conf`）并让 apt 只走 IPv4（`Acquire::ForceIPv4`）；仍失败说明镜像不是最新 |
 | 画面全黑只剩光标 | 打开了 OpenGL 合成（`KDE_COMPOSITING=true`）。改回 `false` 并重启会话 |
 | `glxinfo` 报 `couldn't find RGB GLX visual` | 缺 `libllvm19`：`ldd /usr/lib/aarch64-linux-gnu/libEGL_mesa.so.0.0.0 \| grep "not found"` |
-| Chromium 报 `No usable sandbox!` | 缺 `chromium-sandbox`（镜像已带；手工装过 `chromium` 的话补上） |
 | 锁屏后只剩黑板 | 锁屏组件在 Termux:X11 下解不开。会话里 `pkill -f kscreenlocker_greet`，或确认 `~/.config/kscreenlockerrc` 里 `Autolock=false` |
 | `stop` 报 `unkillable state` | 4.19 下容器 init 杀不掉，重启设备；容器目录仍在，直接再 `start` |
 
@@ -293,7 +293,7 @@ docker version --format '{{.Server.Version}}'  # 29.9.2
 
 - **桌面合成器不走 GPU**：kwin 的 OpenGL 合成在 kgsl 上把窗口内容采成黑色（`GLX_EXT_texture_from_pixmap` / DRI3 dmabuf 路径），所以默认 `Compositing=false`，窗口合成走 XRender。应用自身的 GL/EGL 仍是硬件渲染（`glxinfo` 显示 freedreno、`glmark2` 281 分）。
 - **没有硬件视频解码**：4.19 厂商内核只有 kgsl、没有 `msm` DRM，VA-API 不可用，1080p 由 4 个核心软解，内存吃满时掉帧。
-- **没有 Edge**：`packages.microsoft.com` 的 `binary-arm64` 索引为空，Edge 没有 Linux/arm64 版本，镜像里是 Chromium。
+- **没有 Edge，也没有 Chromium**：`packages.microsoft.com` 的 `binary-arm64` 索引为空，Edge 没有 Linux/arm64 版本；Chromium 在这套 kgsl + Termux:X11 上要额外压启动参数才能正常播放与全屏，镜像只带 Firefox ESR。
 - **混装栈**：glibc 2.43、Qt 6.11.2、KF 6.30 来自 unstable，属于 Debian 不支持的组合；要完全原生就 `KDE_STACK=trixie` 构建，得到 Plasma 6.3.6。
 - **IPv6 取决于宿主**：宿主没有全局 IPv6 时，容器只有 `fd64:7370::/48` 内地址，出网走 IPv4。
 - **`macvlan` 不可用**：Wi-Fi 只收目的地址是自己的帧，用 NAT。

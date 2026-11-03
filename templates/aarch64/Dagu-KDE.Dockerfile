@@ -134,16 +134,23 @@ RUN if [ "$DISPLAY_BACKEND" = "x11" ]; then \
         apt-get install -y --no-install-recommends x11-xserver-utils x11-utils xauth xkb-data libxcb-cursor0; \
     fi
 
-# 浏览器：packages.microsoft.com 的 binary-arm64 索引为空，Edge 没有 Linux/arm64
-# 版本；Debian 源里可用的是 Chromium。GUI 启动需要 chromium-sandbox，缺它会报
-# "No usable sandbox!" 并直接退出。scrot 用于在容器内截取 X 画面。
+# 浏览器：只带 Firefox ESR。Chromium 的内容进程在这套 kgsl + Termux:X11 上需要
+# 额外压参数才不静音、不全屏回退，维护成本高，不再预装。Firefox 的默认值另写一份
+# 到 defaults/pref，让首次启动不去拉 about:welcome（那页要连 mozilla.org）。
+# scrot 用于在容器内截取 X 画面。
 RUN if [ "$DISPLAY_BACKEND" = "x11" ]; then \
-        apt-get install -y --no-install-recommends chromium chromium-sandbox scrot && \
+        apt-get install -y --no-install-recommends firefox-esr scrot && \
+        install -d -m 0755 /usr/lib/firefox-esr/defaults/pref && \
         printf '%s\n' \
-            '# 免去 KDE 密码服务弹窗、崩溃恢复气泡；自动播放时带声音' \
-            'export CHROMIUM_FLAGS="$CHROMIUM_FLAGS --password-store=basic --hide-crash-restore-bubble --autoplay-policy=no-user-gesture-required"' \
-            > /etc/chromium.d/droidspaces && \
-        chmod 0644 /etc/chromium.d/droidspaces; \
+            '// 首启不依赖外网，也不弹默认浏览器询问。' \
+            'pref("browser.aboutwelcome.enabled", false);' \
+            'pref("browser.startup.homepage", "about:blank");' \
+            'pref("browser.newtabpage.enabled", false);' \
+            'pref("browser.shell.checkDefaultBrowser", false);' \
+            'pref("datareporting.policy.dataSubmissionEnabled", false);' \
+            'pref("toolkit.telemetry.enabled", false);' \
+            > /usr/lib/firefox-esr/defaults/pref/droidspaces.js && \
+        chmod 0644 /usr/lib/firefox-esr/defaults/pref/droidspaces.js; \
     fi
 
 # Debian 13 自带 systemd 257，即 4.19 上验证过的版本。systemd257.sh 只对
@@ -308,13 +315,23 @@ fi
 # Droidspaces 的 NAT 走宿主的转发路径，链路 MTU 不是 1500。容器 eth0 继承 1500 时，
 # 超过路径 MTU 的报文会被静默丢弃，表现出来就是下载或视频加载偶发卡在 0 字节：
 # 同一个文件在 1500 下 5 次里 2 次超时，1400 下 5 次全部成功（3.4–7 MB/s）。
-cat > /etc/systemd/network/20-droidspaces-mtu.network << 'EOT'
+# 文件名必须排在 10-droidspaces.network 之前：networkd 对同一个接口只取第一个
+# 匹配的 .network，写成 20- 会被 10- 压制，MTUBytes 永远不生效。
+cat > /etc/systemd/network/05-droidspaces-mtu.network << 'EOT'
 [Match]
 Name=eth*
 
 [Link]
 MTUBytes=1400
 EOT
+
+# 容器只有 NAT 一条路，IPv6 拿不到默认路由：apt/curl 若先解析出 AAAA 就会连不
+# 过去（connect (101: 网络不可达)）再退回 IPv4，白白多等一轮。这里把 IPv4 提到
+# 前面，并让 apt 直接只走 IPv4。
+sed -i 's|^#precedence ::ffff:0:0/96  100|precedence ::ffff:0:0/96  100|' /etc/gai.conf
+grep -q '^precedence ::ffff:0:0/96' /etc/gai.conf || \
+    printf '\n# 双栈都可用时优先 IPv4\nprecedence ::ffff:0:0/96  100\n' >> /etc/gai.conf
+printf 'Acquire::ForceIPv4 "true";\n' > /etc/apt/apt.conf.d/99force-ipv4
 
 mkdir -p /etc/systemd/logind.conf.d
 cat > /etc/systemd/logind.conf.d/99-power-key.conf << 'EOF'
