@@ -55,7 +55,6 @@ Mesa 不用发行版包：构建时调用 `scripts/tui/install-mesa.sh --1`，�
 | `~/.config/kscreenlockerrc` | `Autolock=false` `LockOnStart=false` | 没有虚拟终端可以执行 `loginctl unlock`，锁屏一失败就是一块黑板 |
 | `/home/dagu/.bashrc` | 追加 `XDG_RUNTIME_DIR=/run/user/$(id -u)` | 容器里没有 pam_systemd 自动设置 |
 | `/etc/systemd/network/10-droidspaces.network` | `DHCP=yes` `IPv6AcceptRA=no` `KeepConfiguration=yes` | networkd 257 用 nexthop 对象下发 IPv6 RA 路由，4.19 不支持 |
-| `/etc/systemd/network/20-droidspaces-mtu.network` | `MTUBytes=1400` | NAT 路径 MTU 不足 1500，1500 下下载会卡在 0 字节 |
 | `/etc/systemd/journald.conf` + `journald.conf.d/ds-logging.conf` | `ReadKMsg=no` `Audit=no` `Storage=volatile`，上限 200M / 7 天 | 容器没有内核日志与审计权限 |
 | `/etc/systemd/logind.conf.d/99-power-key.conf` | 电源键、休眠键全部 `ignore` | 避免容器内 logind 抢宿主按键 |
 | `/etc/systemd/system/systemd-udev-*.d/99-readonly-fix.conf` | `ConditionPathIsReadWrite=` | 容器 `/sys` 只读，不覆盖会起不来 |
@@ -173,7 +172,7 @@ ls -l "$TMPDIR/.X11-unix"      # 要能看到 srwxrwxrwx X5
 
 容器内依次发生：
 
-- `systemd-networkd` 在 `eth0` 上取 DHCP 地址，`20-droidspaces-mtu.network` 把 MTU 钉在 1400；
+- `systemd-networkd` 在 `eth0` 上取 DHCP 地址，同一个单元里把 MTU 钉在 1400；
 - `droidspaces-x11-bridge.service` 把 `/mnt/termux/.X11-unix` 挂到 `/tmp/.X11-unix`；
 - `desktop-session.service` 等到 socket 后执行 `startplasma-x11`；
 - `docker.service`、`containerd.service` 启动。
@@ -338,7 +337,7 @@ scripts/start/desktop-session.service       会话单元模板
 scripts/generate_rootfs_json.py             由 Release 资产生成 rootfs.json
 docs/debian-plasma67.md                     依赖解析、混装约束与实测记录
 rootfs/                                     覆盖进镜像的运行时文件
-  etc/systemd/network/{10-droidspaces,20-droidspaces-mtu}.network
+  etc/systemd/network/10-droidspaces.network
   etc/systemd/system/{ds-nat6,dagu-firstboot,droidspaces-x11-bridge}.service
   etc/systemd/system/droidspaces-x11-watch.path
   etc/docker/daemon.json

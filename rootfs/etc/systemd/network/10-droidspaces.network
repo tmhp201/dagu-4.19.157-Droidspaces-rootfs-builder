@@ -10,3 +10,9 @@ KeepConfiguration=yes
 UseDNS=yes
 UseDomains=yes
 RouteMetric=100
+
+[Link]
+# Droidspaces NAT 的路径 MTU 不足 1500，放 1500 会让大包被静默丢弃。
+# 必须和 DHCP 写在同一个文件里：networkd 对同一接口只取第一个匹配的
+# .network，拆成两个文件时后者不会生效。
+MTUBytes=1400

@@ -141,7 +141,7 @@ sed -i 's|^load-module module-suspend-on-idle|#&|' "$P"      # 切音频设备�
 
 `droidspaces run` 用的是 Android 的 PATH 与环境，里面没有 `PULSE_SERVER`，ALSA 的 pulse 插件会连默认路径并报 `-112 Host is down`；用 `su -l dagu -c ...` 或自己 export 即可。开 `enable_pulseaudio=1` 本身不会像 `--x11` 那样重启设备。
 
-**网络**：Droidspaces 的 NAT 走宿主转发，链路 MTU 不足 1500。容器 eth0 按 1500 走时，超路径 MTU 的报文被静默丢弃，表现是下载、视频加载偶发卡在 0 字节——同一个文件 1500 下 5 次里 2 次超时，1400 下 5 次全部成功（3.4–7 MB/s）。镜像里用 `/etc/systemd/network/20-droidspaces-mtu.network` 把 MTU 钉在 1400。
+**网络**：Droidspaces 的 NAT 走宿主转发，链路 MTU 不足 1500。容器 eth0 按 1500 走时，超路径 MTU 的报文被静默丢弃，表现是下载、视频加载偶发卡在 0 字节——同一个文件 1500 下 5 次里 2 次超时，1400 下 5 次全部成功（3.4–7 MB/s）。镜像里把 `MTUBytes=1400` 写在 `/etc/systemd/network/10-droidspaces.network` 的 `[Link]` 段，跟 DHCP 同一个文件——networkd 对同一接口只取第一个匹配的 `.network`，拆开写会让其中一份失效。
 
 **Docker**：trixie 自带的 `docker.io` 冻结在 26.1.5，模板改用 Docker 官方仓库（`download.docker.com/linux/debian`，trixie/arm64）装 `docker-ce` 29.9.2、`containerd.io` 2.4.2、`docker-buildx-plugin` 0.38.1、`docker-compose-plugin` 5.7.0，`update-alternatives` 仍切到 `iptables-legacy`。版本由 `DOCKER_VERSION` / `CONTAINERD_VERSION` 控制，留空装候选版本；`DOCKER_SOURCE=debian` 可退回发行版包。dockerd 以 overlay2 起得来，`docker run --rm hello-world` 实测通过；`/etc/docker/daemon.json` 预设了 `docker.m.daocloud.io` 与 `docker.1ms.run` 两个镜像源。
 

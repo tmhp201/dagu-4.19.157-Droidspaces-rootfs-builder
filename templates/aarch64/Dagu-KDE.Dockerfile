@@ -315,16 +315,8 @@ fi
 # Droidspaces 的 NAT 走宿主的转发路径，链路 MTU 不是 1500。容器 eth0 继承 1500 时，
 # 超过路径 MTU 的报文会被静默丢弃，表现出来就是下载或视频加载偶发卡在 0 字节：
 # 同一个文件在 1500 下 5 次里 2 次超时，1400 下 5 次全部成功（3.4–7 MB/s）。
-# 文件名必须排在 10-droidspaces.network 之前：networkd 对同一个接口只取第一个
-# 匹配的 .network，写成 20- 会被 10- 压制，MTUBytes 永远不生效。
-cat > /etc/systemd/network/05-droidspaces-mtu.network << 'EOT'
-[Match]
-Name=eth*
-
-[Link]
-MTUBytes=1400
-EOT
-
+# MTU 和 DHCP 写在同一个 .network 里（rootfs 覆盖层的 10-droidspaces.network）：
+# networkd 对同一个接口只取第一个匹配的文件，拆开写会让其中一份永远不生效。
 # 容器只有 NAT 一条路，IPv6 拿不到默认路由：apt/curl 若先解析出 AAAA 就会连不
 # 过去（connect (101: 网络不可达)）再退回 IPv4，白白多等一轮。这里把 IPv4 提到
 # 前面，并让 apt 直接只走 IPv4。
