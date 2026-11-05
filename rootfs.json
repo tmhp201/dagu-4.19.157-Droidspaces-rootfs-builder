@@ -1,15 +1,15 @@
 [
   {
-    "name": "Dagu KDE (Debian 13)",
+    "name": "Violin KDE (Debian 13)",
     "distro": "Debian",
-    "description": "Debian 13 with KDE Plasma on X11, systemd, Docker and dual-stack networking for Droidspaces on the Xiaomi Pad 5 Pro 12.4.",
+    "description": "Debian 13 with KDE Plasma on Termux:X11 (DISPLAY=:5) and VirGL hardware rendering (Mali-G925-Immortalis) for Droidspaces on the Xiaomi Pad 7S Pro 12.5.",
     "author": "dagu-4.19.157-Droidspaces-rootfs-builder",
     "architecture": "aarch64",
-    "file": "Dagu-KDE",
-    "download_url": "https://github.com/tmhp201/dagu-4.19.157-Droidspaces-rootfs-builder/releases/download/v20261105-154207/Dagu-Violin-KDE-Droidspaces-rootfs-aarch64-20261105-v20261105-154207.tar.xz",
-    "sha256": "6da10e1df827ae638f1d455482d70d7d79f0b10e7f583f96b20ea2f26bec9631",
-    "size_bytes": 776218568,
-    "version": "v20261105-154207",
+    "file": "Dagu-Violin-KDE",
+    "download_url": "https://github.com/tmhp201/dagu-4.19.157-Droidspaces-rootfs-builder/releases/download/v20261105-164708/Dagu-Violin-KDE-Droidspaces-rootfs-aarch64-20261105-v20261105-164708.tar.xz",
+    "sha256": "49d4f424d4536868066affad75c716cad808a4341bcf55e449b5136d25b5c610",
+    "size_bytes": 776231760,
+    "version": "v20261105-164708",
     "build_date": "20261105"
   }
 ]
