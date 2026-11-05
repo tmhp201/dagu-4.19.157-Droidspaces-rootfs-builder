@@ -43,6 +43,16 @@ VARIANTS = {
         ),
         "file": "Dagu-KDE",
     },
+       "Dagu-Violin-KDE": {
+        "name": "Violin KDE (Debian 13)",
+        "distro": "Debian",
+        "description": (
+            "Debian 13 with KDE Plasma on Termux:X11 (DISPLAY=:5) and VirGL "
+            "hardware rendering (Mali-G925-Immortalis) for Droidspaces on the "
+            "Xiaomi Pad 7S Pro 12.5."
+        ),
+        "file": "Dagu-Violin-KDE",
+    }, 
 }
 
 ASSET_RE = re.compile(
