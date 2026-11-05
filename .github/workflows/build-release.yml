@@ -40,7 +40,7 @@ jobs:
     needs: meta
     runs-on: ubuntu-24.04-arm
     env:
-      TEMPLATE: Dagu-KDE
+      TEMPLATE: Dagu-Violin-KDE
     steps:
       - uses: actions/checkout@v4
 
@@ -67,7 +67,7 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: rootfs-Dagu-KDE
+          name: rootfs-Dagu-Violin-KDE
           path: "*.tar.xz"
           retention-days: 3
           if-no-files-found: error
@@ -88,12 +88,12 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ needs.meta.outputs.build_id }}
-          name: Dagu KDE rootfs ${{ needs.meta.outputs.build_id }}
+          name: Violin KDE rootfs ${{ needs.meta.outputs.build_id }}
           files: assets/*.tar.xz
           body: |
-            Droidspaces rootfs image for the Xiaomi Pad 5 Pro 12.4.
+            Droidspaces rootfs image for the Xiaomi Pad 7S Pro 12.5 (violin, XRING O1).
 
-            - `Dagu-KDE-*`: Debian 13 + KDE Plasma 6.7 on Termux:X11 with Mesa/kgsl.
+            - `Dagu-Violin-KDE-*`: Debian 13 + KDE Plasma 6.7 on Termux:X11 with VirGL (Mali-G925-Immortalis).
 
             Import the tarball as a container rootfs; see README for the container options.
 
